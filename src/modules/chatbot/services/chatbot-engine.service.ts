@@ -129,6 +129,12 @@ export class ChatbotEngineService {
     const typingEnabled =
       (agent?.enableReplyDelay ?? true) && (agent?.enableTyping ?? true);
 
+    await this.chatbotRepository.updateConversation({
+      id: conversation.id,
+      state: next.state,
+      memory: next.memory as Prisma.InputJsonValue,
+      leadId: next.leadId,
+    });
     await this.zapiService.sendText({
       phone,
       message: next.reply,
@@ -139,12 +145,6 @@ export class ChatbotEngineService {
       conversationId: conversation.id,
       direction: "outbound",
       body: next.reply,
-    });
-    await this.chatbotRepository.updateConversation({
-      id: conversation.id,
-      state: next.state,
-      memory: next.memory as Prisma.InputJsonValue,
-      leadId: next.leadId,
     });
 
     return { state: next.state, replied: true, delayMs: typingEnabled ? delaySeconds * 1000 : 0 };
@@ -870,7 +870,10 @@ function applyAddress(memory: ChatMemory, address: ViaCepAddress) {
 
 async function fetchViaCep(cep: string): Promise<ViaCepAddress | null> {
   try {
-    const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`, { cache: "no-store" });
+    const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(4_000),
+    });
     if (!response.ok) return null;
     const data = (await response.json()) as { erro?: boolean; logradouro?: string; bairro?: string; localidade?: string; uf?: string };
     if (data.erro) return null;

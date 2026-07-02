@@ -1,0 +1,357 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum UserRole {
+  ADMIN
+  EMPLOYEE
+}
+
+enum UserStatus {
+  ACTIVE
+  BLOCKED
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  PROPOSAL
+  WON
+  LOST
+}
+
+enum AppointmentPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum ExpenseStatus {
+  PENDING
+  PAID
+  OVERDUE
+}
+
+enum AuditAction {
+  LOGIN
+  LOGOUT
+  CREATE
+  UPDATE
+  DELETE
+  BLOCK
+  IMPORT
+  EXPORT
+  PASSWORD_CHANGE
+  PERMISSION_CHANGE
+  CHATBOT_MESSAGE
+}
+
+model User {
+  id             String      @id @default(uuid()) @db.Uuid
+  authUserId     String?     @unique
+  name           String
+  email          String      @unique
+  passwordHash   String?
+  phone          String?
+  role           UserRole    @default(EMPLOYEE)
+  status         UserStatus  @default(ACTIVE)
+  title          String?
+  avatarUrl      String?
+  theme          String      @default("system")
+  permissions    Json        @default("{}")
+  passwordChangedAt DateTime?
+  lastLoginAt    DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  deletedAt      DateTime?
+  assignedLeads  Lead[]      @relation("LeadAssignee")
+  closedLeads    Lead[]      @relation("LeadCloser")
+  appointments   Appointment[] @relation("AppointmentResponsible")
+  createdAppointments Appointment[] @relation("AppointmentCreator")
+  ownedAppointments Appointment[] @relation("AppointmentOwnerAdmin")
+  auditLogs      AuditLog[]
+  conversations  ChatConversation[]
+
+  @@index([role, status])
+  @@index([deletedAt])
+}
+
+model Lead {
+  id             String      @id @default(uuid()) @db.Uuid
+  customerCode   String      @unique @default(cuid())
+  name           String
+  phone          String
+  email          String?
+  cpfCnpj        String?
+  birthDate      DateTime?
+  cep            String?
+  address        String?
+  streetNumber   String?
+  complement     String?
+  city           String?
+  state          String?
+  neighborhood   String?
+  status         LeadStatus  @default(NEW)
+  kanbanStageId  String?     @db.Uuid
+  planId         String?     @db.Uuid
+  planName       String?
+  planValue      Decimal?    @db.Decimal(12, 2)
+  billingDueDay  Int?
+  assignedUserId String?     @db.Uuid
+  closedByUserId String?     @db.Uuid
+  source         String      @default("manual")
+  notes          String?
+  expectedValue  Decimal?    @db.Decimal(12, 2)
+  wonAt          DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  deletedAt      DateTime?
+  assignedUser   User?       @relation("LeadAssignee", fields: [assignedUserId], references: [id])
+  closedByUser   User?       @relation("LeadCloser", fields: [closedByUserId], references: [id])
+  kanbanStage    LeadKanbanStage? @relation(fields: [kanbanStageId], references: [id])
+  plan           Plan?       @relation(fields: [planId], references: [id])
+  conversations  ChatConversation[]
+  appointments   Appointment[]
+
+  @@index([phone])
+  @@index([status])
+  @@index([kanbanStageId])
+  @@index([assignedUserId])
+  @@index([closedByUserId])
+  @@index([wonAt])
+  @@index([deletedAt])
+}
+
+model LeadKanbanStage {
+  id        String     @id @default(uuid()) @db.Uuid
+  name      String
+  status    LeadStatus @default(CONTACTED)
+  order     Int        @default(0)
+  active    Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  deletedAt DateTime?
+  leads     Lead[]
+
+  @@index([active, order])
+  @@index([deletedAt])
+}
+
+model Expense {
+  id          String    @id @default(uuid()) @db.Uuid
+  description String
+  amount      Decimal   @db.Decimal(12, 2)
+  status      ExpenseStatus @default(PENDING)
+  paymentMethod String?
+  dueAt       DateTime?
+  paidAt      DateTime?
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  @@index([paidAt])
+  @@index([status])
+  @@index([dueAt])
+  @@index([deletedAt])
+}
+
+model Appointment {
+  id             String              @id @default(uuid()) @db.Uuid
+  title          String
+  description    String?
+  status         String              @default("A Fazer")
+  stageId        String?             @db.Uuid
+  priority       AppointmentPriority @default(MEDIUM)
+  startsAt       DateTime?
+  dueAt          DateTime?
+  leadId         String?             @db.Uuid
+  responsibleId  String?             @db.Uuid
+  assignedToAll  Boolean             @default(false)
+  createdById    String?             @db.Uuid
+  ownerAdminId   String?             @db.Uuid
+  order          Int                 @default(0)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  deletedAt      DateTime?
+  lead           Lead?               @relation(fields: [leadId], references: [id])
+  stage          AppointmentStage?    @relation(fields: [stageId], references: [id])
+  responsible    User?               @relation("AppointmentResponsible", fields: [responsibleId], references: [id])
+  createdBy      User?               @relation("AppointmentCreator", fields: [createdById], references: [id])
+  ownerAdmin     User?               @relation("AppointmentOwnerAdmin", fields: [ownerAdminId], references: [id])
+
+  @@index([status, order])
+  @@index([stageId])
+  @@index([responsibleId])
+  @@index([createdById])
+  @@index([ownerAdminId])
+  @@index([assignedToAll])
+  @@index([deletedAt])
+}
+
+model AppointmentStage {
+  id        String        @id @default(uuid()) @db.Uuid
+  name      String
+  status    String        @default("A Fazer")
+  order     Int           @default(0)
+  active    Boolean       @default(true)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  deletedAt DateTime?
+  appointments Appointment[]
+
+  @@index([active, order])
+  @@index([deletedAt])
+}
+
+model CoverageCep {
+  id           String    @id @default(uuid()) @db.Uuid
+  cep          String
+  city         String?
+  state        String?
+  neighborhood String?
+  street       String?
+  available    Boolean   @default(true)
+  importedFrom String?
+  importedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  @@index([cep])
+  @@index([available])
+  @@index([deletedAt])
+}
+
+model Plan {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String
+  speed       String
+  price       Decimal   @db.Decimal(12, 2)
+  description String?
+  active      Boolean   @default(true)
+  order       Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  leads       Lead[]
+  agents      Agent[]
+
+  @@index([active, order])
+  @@index([deletedAt])
+}
+
+model Agent {
+  id                 String   @id @default(uuid()) @db.Uuid
+  name               String
+  gender             String   @default("MALE")
+  personality        String
+  rules              Json     @default("{}")
+  flow               Json     @default("{}")
+  active             Boolean  @default(true)
+  minTypingSeconds   Int      @default(2)
+  maxTypingSeconds   Int      @default(4)
+  enableReadReceipt  Boolean  @default(true)
+  enableTyping       Boolean  @default(true)
+  enableReplyDelay   Boolean  @default(true)
+  openAiModel        String?
+  zapiBaseUrl        String?
+  zapiInstanceId     String?
+  zapiToken          String?
+  zapiClientToken    String?
+  zapiWhatsappNumber String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  deletedAt          DateTime?
+  conversations      ChatConversation[]
+  plans              Plan[]
+
+  @@index([active])
+  @@index([deletedAt])
+}
+
+model ChatConversation {
+  id          String        @id @default(uuid()) @db.Uuid
+  phone       String
+  state       String        @default("START")
+  memory      Json          @default("{}")
+  leadId      String?       @db.Uuid
+  agentId     String?       @db.Uuid
+  ownerUserId String?       @db.Uuid
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  deletedAt   DateTime?
+  lead        Lead?         @relation(fields: [leadId], references: [id])
+  agent       Agent?        @relation(fields: [agentId], references: [id])
+  owner       User?         @relation(fields: [ownerUserId], references: [id])
+  messages    ChatMessage[]
+
+  @@index([phone])
+  @@index([state])
+  @@index([deletedAt])
+}
+
+model ChatMessage {
+  id             String           @id @default(uuid()) @db.Uuid
+  conversationId String           @db.Uuid
+  direction      String
+  body           String
+  providerId     String?          @unique
+  rawPayload     Json?
+  readAt         DateTime?
+  sentAt         DateTime?
+  createdAt      DateTime         @default(now())
+  conversation   ChatConversation @relation(fields: [conversationId], references: [id])
+
+  @@index([conversationId, createdAt])
+}
+
+model AuditLog {
+  id          String      @id @default(uuid()) @db.Uuid
+  userId      String?     @db.Uuid
+  action      AuditAction
+  module      String
+  description String
+  metadata    Json?
+  ip          String?
+  userAgent   String?
+  createdAt   DateTime    @default(now())
+  user        User?       @relation(fields: [userId], references: [id])
+
+  @@index([module, action])
+  @@index([createdAt])
+}
+
+model TechnicalLog {
+  id             String   @id @default(uuid()) @db.Uuid
+  requestId      String?
+  level          String
+  category       String
+  message        String
+  method         String?
+  endpoint       String?
+  durationMs     Int?
+  statusCode     Int?
+  integration    String?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  @@index([level, category])
+  @@index([createdAt])
+}
+
+model AppSetting {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

@@ -1005,8 +1005,8 @@ function buildPlanOptionList(plans: PlanCandidate[]): Extract<InteractivePayload
     buttonLabel: "Ver planos",
     options: plans.map((plan) => ({
       id: plan.id,
-      title: limitText(plan.name, 24),
-      description: limitText(`${formatMoney(Number(plan.price))}/mês`, 72),
+      title: limitText(planOptionTitle(plan), 24),
+      description: limitText(planOptionDescription(plan), 72),
     })),
   };
 }
@@ -1210,6 +1210,23 @@ function toTitleCase(value: string) {
 
 function limitText(value: string, maxLength: number) {
   return value.length <= maxLength ? value : `${value.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
+function planOptionTitle(plan: PlanCandidate) {
+  const normalized = normalizeText(plan.name);
+  if (normalized.includes("250 mega")) return "250 MEGA + Chip";
+  if (normalized.includes("350 mega")) return "350 MEGA";
+  if (normalized.includes("500 mega")) return "500 MEGA + Chip";
+  if (normalized.includes("1 giga") && normalized.includes("chip")) return "1 GIGA + Chip";
+  if (normalized.includes("1 giga")) return "1 GIGA";
+  return plan.name;
+}
+
+function planOptionDescription(plan: PlanCandidate) {
+  const details = [];
+  if (plan.description) details.push(plan.description.replace(/\s+\+\s+Globoplay.*$/i, "").trim());
+  details.push(`${formatMoney(Number(plan.price))}/mês`);
+  return details.join(" - ");
 }
 
 function interpolate(template: string, memory: ChatMemory, agentName?: string) {

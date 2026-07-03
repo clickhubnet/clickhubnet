@@ -23,18 +23,18 @@ type AgentItem = {
 type Tab = "agents" | "plans" | "openai" | "flow";
 
 const defaultSteps: FlowStep[] = [
-  { id: "start", state: "START", title: "Entrada Meta Ads", message: "Olá 👋! Eu sou o {{agente}}, atendente virtual da Claro. Estou aqui pra facilitar seu atendimento. Pode me informar o CEP da instalação?" },
-  { id: "cep", state: "ASK_CEP", title: "Consultar cobertura", message: "Validar o CEP na base do CRM. Se houver viabilidade, confirmar endereço e pedir nome completo. Se não houver, informar indisponibilidade e finalizar." },
-  { id: "name", state: "ASK_NAME", title: "Nome completo", message: "Boa notícia 🎉! Temos viabilidade no CEP {{cep}}, localizado {{endereco}}. Consigo te atender com a Claro 🚀. Para seguir com a contratação, preciso coletar alguns dados seus. Qual é o seu nome completo?" },
-  { id: "document", state: "ASK_DOCUMENT", title: "CPF ou CNPJ", message: "Ótimo, {{nome}}! 😊 Agora, por favor, me informe o seu CPF ou CNPJ." },
-  { id: "birth-date", state: "ASK_BIRTH_DATE", title: "Data de nascimento", message: "CPF válido! ✅ Agora, por favor, me informe a sua data de nascimento." },
-  { id: "street-number", state: "ASK_STREET_NUMBER", title: "Número da residência", message: "Data de nascimento aceita! 🎉 Agora, por favor, me informe o número da sua residência." },
-  { id: "complement", state: "ASK_COMPLEMENT", title: "Complemento", message: "Perfeito! Agora, você poderia me informar se há algum complemento para o endereço?" },
-  { id: "billing", state: "ASK_BILLING_DUE_DAY", title: "Vencimento", message: "Agora, por favor, me informe a data de vencimento. Pode ser 5, 8, 10, 15, 20 ou 25 do mês." },
-  { id: "email", state: "ASK_EMAIL", title: "E-mail", message: "Data de vencimento registrada. 📅 Agora, preciso do seu e-mail, por favor! 😊" },
-  { id: "recommend-plan", state: "RECOMMEND_PLAN", title: "Recomendação de plano", message: "Recomendar o melhor plano com base nos planos ativos do banco e perguntar se o cliente quer seguir com ele ou ver outras opções." },
-  { id: "choose-plan", state: "CHOOSE_PLAN", title: "Escolha do plano", message: "Listar planos ativos cadastrados no banco, permitir escolha por nome, velocidade, número ou intenção equivalente." },
-  { id: "confirm", state: "CONFIRM_DATA", title: "Confirmação dos dados", message: "Enviar resumo com CEP, nome, documento, nascimento, endereço, e-mail, vencimento e plano. Se estiver correto, criar lead na aba Leads." },
+  { id: "start", state: "START", title: "Entrada Meta Ads", message: "Olá, bom dia/boa tarde/boa noite! Eu sou a {{agente}}. Consultora da Claro, para verificar se na sua região tem cobertura, poderia me informar o CEP da instalação?" },
+  { id: "cep", state: "ASK_CEP", title: "Consultar cobertura", message: "Consultar o CEP na base do CRM e complementar endereço com ViaCEP quando necessário. Se não houver cobertura, informar indisponibilidade e finalizar." },
+  { id: "street-number", state: "ASK_STREET_NUMBER", title: "Número da residência", message: "Com cobertura confirmada, pedir o número da residência." },
+  { id: "complement", state: "ASK_COMPLEMENT", title: "Complemento", message: "Perguntar se há complemento, como casa, apartamento ou bloco." },
+  { id: "address-confirm", state: "ASK_ADDRESS_CONFIRM", title: "Confirmação do endereço", message: "Confirmar o endereço completo cadastrado e pedir resposta SIM ou NÃO." },
+  { id: "name", state: "ASK_NAME", title: "Nome completo", message: "Com o endereço confirmado, pedir o nome completo do cliente." },
+  { id: "choose-plan", state: "CHOOSE_PLAN", title: "Escolha do plano", message: "Listar os planos ativos com Globoplay grátis e conduzir o cliente para escolher um deles." },
+  { id: "document", state: "ASK_DOCUMENT", title: "CPF ou CNPJ", message: "Após a escolha do plano, pedir o CPF ou CNPJ e validar o documento." },
+  { id: "birth-date", state: "ASK_BIRTH_DATE", title: "Data de nascimento", message: "Com documento válido, pedir a data de nascimento do cliente." },
+  { id: "billing", state: "ASK_BILLING_DUE_DAY", title: "Vencimento", message: "Perguntar o melhor dia para vencimento da fatura: 5, 8, 10, 15, 20 ou 25." },
+  { id: "email", state: "ASK_EMAIL", title: "E-mail", message: "Pedir o e-mail para finalizar o cadastro." },
+  { id: "confirm", state: "CONFIRM_DATA", title: "Confirmação dos dados", message: "Exibir resumo completo com CEP, nome, documento, nascimento, endereço, e-mail, vencimento e plano. Se estiver correto, criar lead na aba Leads." },
   { id: "finish", state: "FINISHED", title: "Finalização", message: "Perfeito! 🎉 Seus dados foram confirmados. Vou cadastrar aqui, deixa o celular ligado 📱, porque aprovando você receberá uma ligação da nossa central." },
 ];
 

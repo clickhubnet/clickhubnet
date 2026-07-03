@@ -172,7 +172,7 @@ export class ChatbotEngineService {
       return {
         state: "ASK_CEP",
         memory: {},
-        reply: messageFor("START", greetingMessage(input.agent?.name)),
+        reply: greetingMessage(input.agent?.name),
       };
     }
 
@@ -233,7 +233,7 @@ export class ChatbotEngineService {
       return {
         state: "ASK_CEP",
         memory,
-        reply: messageFor("START", greetingMessage(input.agent?.name)),
+        reply: greetingMessage(input.agent?.name),
       };
     }
 
@@ -502,7 +502,7 @@ export class ChatbotEngineService {
     return {
       state: "ASK_CEP",
       memory: {},
-      reply: messageFor("START", greetingMessage(input.agent?.name)),
+      reply: greetingMessage(input.agent?.name),
     };
   }
 
@@ -1065,15 +1065,7 @@ function callResumePrompt(
   agent: Awaited<ReturnType<ChatbotRepository["getAgentByInstance"]>>,
 ) {
   if (state === "START") {
-    return interpolate(
-      flowMessage(
-        agent?.flow,
-        "START",
-        greetingMessage(agent?.name),
-      ),
-      memory,
-      agent?.name,
-    );
+    return greetingMessage(agent?.name);
   }
   if (state === "FINISHED") return "Seu atendimento já está registrado. Se precisar, envie reiniciar para começar novamente.";
   if (state === "HUMAN_HANDOFF") return "Seu atendimento está sinalizado para uma consultora humana continuar por aqui.";

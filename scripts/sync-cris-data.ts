@@ -117,7 +117,7 @@ const flow = {
       state: "CHOOSE_PLAN",
       title: "Escolha do plano",
       message:
-        "Listar os planos ativos com Globoplay grátis e conduzir o cliente para escolher um deles.",
+        "Mostrar o botão Ver planos e, ao clicar, abrir uma lista clicável com os planos ativos e Globoplay grátis.",
     },
     {
       id: "document",

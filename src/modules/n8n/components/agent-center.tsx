@@ -29,7 +29,7 @@ const defaultSteps: FlowStep[] = [
   { id: "complement", state: "ASK_COMPLEMENT", title: "Complemento", message: "Perguntar se há complemento, como casa, apartamento ou bloco." },
   { id: "address-confirm", state: "ASK_ADDRESS_CONFIRM", title: "Confirmação do endereço", message: "Confirmar o endereço completo cadastrado e pedir resposta SIM ou NÃO." },
   { id: "name", state: "ASK_NAME", title: "Nome completo", message: "Com o endereço confirmado, pedir o nome completo do cliente." },
-  { id: "choose-plan", state: "CHOOSE_PLAN", title: "Escolha do plano", message: "Listar os planos ativos com Globoplay grátis e conduzir o cliente para escolher um deles." },
+  { id: "choose-plan", state: "CHOOSE_PLAN", title: "Escolha do plano", message: "Mostrar o botão Ver planos e, ao clicar, abrir uma lista clicável com os planos ativos e Globoplay grátis." },
   { id: "document", state: "ASK_DOCUMENT", title: "CPF ou CNPJ", message: "Após a escolha do plano, pedir o CPF ou CNPJ e validar o documento." },
   { id: "birth-date", state: "ASK_BIRTH_DATE", title: "Data de nascimento", message: "Com documento válido, pedir a data de nascimento do cliente." },
   { id: "billing", state: "ASK_BILLING_DUE_DAY", title: "Vencimento", message: "Perguntar o melhor dia para vencimento da fatura: 5, 8, 10, 15, 20 ou 25." },

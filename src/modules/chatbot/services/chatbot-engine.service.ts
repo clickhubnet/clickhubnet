@@ -141,6 +141,35 @@ export class ChatbotEngineService {
       delayTypingSeconds: typingEnabled ? delaySeconds : undefined,
       config: agentConfig(agent),
     });
+    if (next.interactive?.type === "button-list") {
+      try {
+        await this.zapiService.sendButtonList({
+          phone,
+          message: next.interactive.message,
+          title: next.interactive.title,
+          footer: next.interactive.footer,
+          buttons: next.interactive.buttons,
+          config: agentConfig(agent),
+        });
+      } catch {
+        // Fallback keeps the conversational text already sent.
+      }
+    }
+    if (next.interactive?.type === "option-list") {
+      try {
+        await this.zapiService.sendOptionList({
+          phone,
+          title: next.interactive.title,
+          message: next.interactive.message,
+          footer: next.interactive.footer,
+          buttonLabel: next.interactive.buttonLabel,
+          options: next.interactive.options,
+          config: agentConfig(agent),
+        });
+      } catch {
+        // Fallback keeps the conversational text already sent.
+      }
+    }
     await this.chatbotRepository.saveMessage({
       conversationId: conversation.id,
       direction: "outbound",
@@ -332,13 +361,28 @@ export class ChatbotEngineService {
       return {
         state: "CHOOSE_PLAN",
         memory,
-        reply: `Muito prazer, ${getFirstName(memory.name)} 😊! Agora chegou a hora de conhecer os melhores planos que têm cobertura na sua residência. Lembrando que todos possuem *Globoplay grátis*:\n\n${formatPlanList(plans)}\n\nEscolha digitando o *número do plano* ou o nome dele.`,
+        reply: `Muito prazer, ${getFirstName(memory.name)} 😊! Agora chegou a hora de conhecer os melhores planos que têm cobertura na sua residência. Lembrando que todos possuem *Globoplay grátis*.\n\nToque no botão *Ver planos* para abrir a lista de opções.`,
+        interactive: {
+          type: "button-list",
+          title: "Planos disponíveis",
+          message: "Toque no botão abaixo para abrir a lista de planos.",
+          buttons: [{ id: "view_plans", label: "Ver planos" }],
+        },
       };
     }
 
     if (input.state === "CHOOSE_PLAN") {
       const plans = await this.getPlans(input.agent);
       const selectedPlan = selectPlan(text, plans);
+
+      if (asksForPlanList(text) || isPositive(text)) {
+        return {
+          state: "CHOOSE_PLAN",
+          memory,
+          reply: "Perfeito 😊! Abra a lista abaixo e toque no plano que você deseja contratar.",
+          interactive: buildPlanOptionList(plans),
+        };
+      }
 
       if (!selectedPlan) {
         if (isPlanRefusal(text)) {
@@ -347,7 +391,8 @@ export class ChatbotEngineService {
         return {
           state: "CHOOSE_PLAN",
           memory,
-          reply: `Claro! 😊 Estas são as opções disponíveis:\n\n${formatPlanList(plans)}\n\nMe diga o *número*, nome ou velocidade do plano que você quer contratar.`,
+          reply: `Claro! 😊 Abra a lista de planos abaixo e toque na opção desejada. Se preferir, você também pode escrever o nome do plano.`,
+          interactive: buildPlanOptionList(plans),
         };
       }
 
@@ -672,7 +717,25 @@ type NextBotResponse = {
   memory: ChatMemory;
   reply: string;
   leadId?: string;
+  interactive?: InteractivePayload;
 };
+
+type InteractivePayload =
+  | {
+      type: "button-list";
+      title?: string;
+      message: string;
+      footer?: string;
+      buttons: Array<{ id: string; label: string }>;
+    }
+  | {
+      type: "option-list";
+      title: string;
+      message: string;
+      buttonLabel: string;
+      footer?: string;
+      options: Array<{ id: string; title: string; description?: string }>;
+    };
 
 type ChatMemory = {
   name?: string;
@@ -935,6 +998,20 @@ function formatPlanList(plans: PlanCandidate[]) {
     .join("\n");
 }
 
+function buildPlanOptionList(plans: PlanCandidate[]): Extract<InteractivePayload, { type: "option-list" }> {
+  return {
+    type: "option-list",
+    title: "Planos disponíveis",
+    message: "Escolha um plano na lista abaixo.",
+    buttonLabel: "Ver planos",
+    options: plans.map((plan) => ({
+      id: plan.id,
+      title: limitText(plan.name, 24),
+      description: limitText(`${formatMoney(Number(plan.price))}/mês`, 72),
+    })),
+  };
+}
+
 function findRecommendedPlan(plans: PlanCandidate[]) {
   const preferred =
     plans.find((plan) => normalizeText(plan.name).includes("1 giga") && normalizeText(plan.name).includes("chip")) ??
@@ -1130,6 +1207,10 @@ function toTitleCase(value: string) {
     .filter(Boolean)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
+}
+
+function limitText(value: string, maxLength: number) {
+  return value.length <= maxLength ? value : `${value.slice(0, maxLength - 1).trimEnd()}…`;
 }
 
 function interpolate(template: string, memory: ChatMemory, agentName?: string) {

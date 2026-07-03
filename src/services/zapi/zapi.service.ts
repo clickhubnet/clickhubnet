@@ -8,6 +8,25 @@ type SendTextInput = {
   config?: Partial<ZapiConfig>;
 };
 
+type SendButtonListInput = {
+  phone: string;
+  message: string;
+  buttons: Array<{ id: string; label: string }>;
+  title?: string;
+  footer?: string;
+  config?: Partial<ZapiConfig>;
+};
+
+type SendOptionListInput = {
+  phone: string;
+  title: string;
+  message: string;
+  buttonLabel: string;
+  options: Array<{ id: string; title: string; description?: string }>;
+  footer?: string;
+  config?: Partial<ZapiConfig>;
+};
+
 type ZapiConfig = Awaited<ReturnType<typeof getZapiRuntimeConfig>>;
 
 export class ZapiService {
@@ -70,6 +89,34 @@ export class ZapiService {
     throw new Error("Falha ao enviar mensagem pela Z-API.");
   }
 
+  async sendButtonList({ phone, message, buttons, title, footer, config }: SendButtonListInput) {
+    return this.sendInteractive("send-button-list", {
+      phone,
+      message,
+      title,
+      footer,
+      buttons: buttons.map((button) => ({
+        id: button.id,
+        label: button.label,
+      })),
+    }, config);
+  }
+
+  async sendOptionList({ phone, title, message, buttonLabel, options, footer, config }: SendOptionListInput) {
+    return this.sendInteractive("send-option-list", {
+      phone,
+      title,
+      message,
+      footer,
+      buttonLabel,
+      options: options.map((option) => ({
+        id: option.id,
+        title: option.title,
+        description: option.description,
+      })),
+    }, config);
+  }
+
   private async optionalPost(action: string, body: Record<string, string>, config?: Partial<ZapiConfig>) {
     try {
       const zapiConfig = { ...(await getZapiRuntimeConfig()), ...cleanConfig(config) };
@@ -93,6 +140,44 @@ export class ZapiService {
     } catch {
       return false;
     }
+  }
+
+  private async sendInteractive(action: string, body: Record<string, unknown>, config?: Partial<ZapiConfig>) {
+    const zapiConfig = { ...(await getZapiRuntimeConfig()), ...cleanConfig(config) };
+    if (!zapiConfig.instanceId || !zapiConfig.token) {
+      throw new Error("Z-API nao configurada.");
+    }
+
+    const response = await fetch(
+      `${zapiConfig.baseUrl}/instances/${zapiConfig.instanceId}/token/${zapiConfig.token}/${action}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(zapiConfig.clientToken ? { "Client-Token": zapiConfig.clientToken } : {}),
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(20_000),
+      },
+    );
+
+    if (response.ok) {
+      return response.json() as Promise<unknown>;
+    }
+
+    const responseBody = await response.text();
+    await writeTechnicalLog({
+      level: "ERROR",
+      category: "integration",
+      message: `Falha ao enviar mensagem interativa pela Z-API em ${action}.`,
+      method: "POST",
+      endpoint: action,
+      statusCode: response.status,
+      integration: "zapi",
+      metadata: { response: responseBody.slice(0, 500) },
+    });
+
+    throw new Error(`Falha ao enviar mensagem interativa pela Z-API em ${action}.`);
   }
 }
 

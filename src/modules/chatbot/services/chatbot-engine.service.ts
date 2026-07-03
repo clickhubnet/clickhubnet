@@ -146,8 +146,6 @@ export class ChatbotEngineService {
         await this.zapiService.sendButtonList({
           phone,
           message: next.interactive.message,
-          title: next.interactive.title,
-          footer: next.interactive.footer,
           buttons: next.interactive.buttons,
           config: agentConfig(agent),
         });
@@ -161,7 +159,6 @@ export class ChatbotEngineService {
           phone,
           title: next.interactive.title,
           message: next.interactive.message,
-          footer: next.interactive.footer,
           buttonLabel: next.interactive.buttonLabel,
           options: next.interactive.options,
           config: agentConfig(agent),

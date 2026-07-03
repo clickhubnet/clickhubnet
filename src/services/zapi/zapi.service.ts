@@ -12,18 +12,15 @@ type SendButtonListInput = {
   phone: string;
   message: string;
   buttons: Array<{ id: string; label: string }>;
-  title?: string;
-  footer?: string;
   config?: Partial<ZapiConfig>;
 };
 
 type SendOptionListInput = {
   phone: string;
-  title: string;
   message: string;
+  title: string;
   buttonLabel: string;
   options: Array<{ id: string; title: string; description?: string }>;
-  footer?: string;
   config?: Partial<ZapiConfig>;
 };
 
@@ -89,31 +86,32 @@ export class ZapiService {
     throw new Error("Falha ao enviar mensagem pela Z-API.");
   }
 
-  async sendButtonList({ phone, message, buttons, title, footer, config }: SendButtonListInput) {
+  async sendButtonList({ phone, message, buttons, config }: SendButtonListInput) {
     return this.sendInteractive("send-button-list", {
       phone,
       message,
-      title,
-      footer,
-      buttons: buttons.map((button) => ({
-        id: button.id,
-        label: button.label,
-      })),
+      buttonList: {
+        buttons: buttons.map((button) => ({
+          id: button.id,
+          label: button.label,
+        })),
+      },
     }, config);
   }
 
-  async sendOptionList({ phone, title, message, buttonLabel, options, footer, config }: SendOptionListInput) {
+  async sendOptionList({ phone, title, message, buttonLabel, options, config }: SendOptionListInput) {
     return this.sendInteractive("send-option-list", {
       phone,
-      title,
       message,
-      footer,
-      buttonLabel,
-      options: options.map((option) => ({
-        id: option.id,
-        title: option.title,
-        description: option.description,
-      })),
+      optionList: {
+        title,
+        buttonLabel,
+        options: options.map((option) => ({
+          id: option.id,
+          title: option.title,
+          description: option.description,
+        })),
+      },
     }, config);
   }
 

@@ -319,7 +319,15 @@ export class ChatbotEngineService {
       return {
         state: "ASK_ADDRESS_CONFIRM",
         memory,
-        reply: `O endereço que cadastrei no sistema é: ${formatFullAddress(memory)}. Está correto?\n\nDigite *SIM* ou *NÃO*.`,
+        reply: `O endereço que cadastrei no sistema é: ${formatFullAddress(memory)}. Está correto?`,
+        interactive: {
+          type: "button-list",
+          message: "Confirme se o endereço está correto.",
+          buttons: [
+            { id: "address_yes", label: "Sim" },
+            { id: "address_no", label: "Não" },
+          ],
+        },
       };
     }
 
@@ -345,7 +353,15 @@ export class ChatbotEngineService {
       return {
         state: "ASK_ADDRESS_CONFIRM",
         memory,
-        reply: `O endereço que cadastrei no sistema é: ${formatFullAddress(memory)}. Está correto?\n\nDigite *SIM* ou *NÃO*.`,
+        reply: `O endereço que cadastrei no sistema é: ${formatFullAddress(memory)}. Está correto?`,
+        interactive: {
+          type: "button-list",
+          message: "Confirme se o endereço está correto.",
+          buttons: [
+            { id: "address_yes", label: "Sim" },
+            { id: "address_no", label: "Não" },
+          ],
+        },
       };
     }
 

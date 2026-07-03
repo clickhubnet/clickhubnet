@@ -375,27 +375,13 @@ export class ChatbotEngineService {
         state: "CHOOSE_PLAN",
         memory,
         reply: `Muito prazer, ${getFirstName(memory.name)} 😊! Agora chegou a hora de conhecer os melhores planos que têm cobertura na sua residência. Lembrando que todos possuem *Globoplay grátis*.\n\nToque no botão *Ver planos* para abrir a lista de opções.`,
-        interactive: {
-          type: "button-list",
-          title: "Planos disponíveis",
-          message: "Toque no botão abaixo para abrir a lista de planos.",
-          buttons: [{ id: "view_plans", label: "Ver planos" }],
-        },
+        interactive: buildPlanOptionList(plans),
       };
     }
 
     if (input.state === "CHOOSE_PLAN") {
       const plans = await this.getPlans(input.agent);
       const selectedPlan = selectPlan(text, plans);
-
-      if (asksForPlanList(text) || isPositive(text)) {
-        return {
-          state: "CHOOSE_PLAN",
-          memory,
-          reply: "Perfeito 😊! Abra a lista abaixo e toque no plano que você deseja contratar.",
-          interactive: buildPlanOptionList(plans),
-        };
-      }
 
       if (!selectedPlan) {
         if (isPlanRefusal(text)) {
@@ -404,7 +390,7 @@ export class ChatbotEngineService {
         return {
           state: "CHOOSE_PLAN",
           memory,
-          reply: `Claro! 😊 Abra a lista de planos abaixo e toque na opção desejada. Se preferir, você também pode escrever o nome do plano.`,
+          reply: `Claro! 😊 Toque no botão *Ver planos* para abrir a lista e escolher a opção desejada. Se preferir, você também pode escrever o nome do plano.`,
           interactive: buildPlanOptionList(plans),
         };
       }

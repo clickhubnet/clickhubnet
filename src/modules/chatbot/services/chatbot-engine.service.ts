@@ -332,7 +332,7 @@ export class ChatbotEngineService {
       return {
         state: "CHOOSE_PLAN",
         memory,
-        reply: `Muito prazer, ${getFirstName(memory.name)} 😊! Agora chegou a hora de conhecer os melhores planos que têm cobertura na sua residência. Lembrando que todos possuem *Globoplay grátis*:\n\n${formatPlanList(plans)}\n\nQual plano você deseja contratar?`,
+        reply: `Muito prazer, ${getFirstName(memory.name)} 😊! Agora chegou a hora de conhecer os melhores planos que têm cobertura na sua residência. Lembrando que todos possuem *Globoplay grátis*:\n\n${formatPlanList(plans)}\n\nEscolha digitando o *número do plano* ou o nome dele.`,
       };
     }
 
@@ -347,7 +347,7 @@ export class ChatbotEngineService {
         return {
           state: "CHOOSE_PLAN",
           memory,
-          reply: `Claro! 😊 Estas são as opções disponíveis:\n\n${formatPlanList(plans)}\n\nMe diga o nome, velocidade ou número do plano que você quer contratar.`,
+          reply: `Claro! 😊 Estas são as opções disponíveis:\n\n${formatPlanList(plans)}\n\nMe diga o *número*, nome ou velocidade do plano que você quer contratar.`,
         };
       }
 
@@ -930,12 +930,16 @@ function buildSummary(memory: ChatMemory) {
 
 function formatPlanList(plans: PlanCandidate[]) {
   if (!plans.length) return "No momento não há planos ativos cadastrados.";
-  return plans.map((plan) => `✅ ${plan.name} → ${formatMoney(Number(plan.price))} + Globoplay (GRÁTIS)`).join("\n");
+  return plans
+    .map((plan, index) => `${index + 1}. ${plan.name} - ${formatMoney(Number(plan.price))}/mês`)
+    .join("\n");
 }
 
 function findRecommendedPlan(plans: PlanCandidate[]) {
-  const comboHexa = plans.find((plan) => normalizeText(plan.name).includes("combo hexa"));
-  if (comboHexa) return comboHexa;
+  const preferred =
+    plans.find((plan) => normalizeText(plan.name).includes("1 giga") && normalizeText(plan.name).includes("chip")) ??
+    plans.find((plan) => normalizeText(plan.name).includes("500 mega") && normalizeText(plan.name).includes("chip"));
+  if (preferred) return preferred;
 
   return plans.reduce<PlanCandidate | undefined>(
     (mostExpensive, plan) =>
@@ -946,16 +950,6 @@ function findRecommendedPlan(plans: PlanCandidate[]) {
 
 function selectPlan(text: string, plans: PlanCandidate[]) {
   const normalized = normalizeText(text);
-  const comboHexa = plans.find((plan) => normalizeText(plan.name).includes("combo hexa"));
-  if (
-    comboHexa &&
-    (normalized.includes("combo hexa") ||
-      normalized === "hexa" ||
-      (normalized.includes("600") && (normalized.includes("chip") || normalized.includes("celular"))) ||
-      normalized.includes("139 80"))
-  ) {
-    return comboHexa;
-  }
 
   const byName = plans.find((plan) => {
     const name = normalizeText(plan.name);
@@ -965,20 +959,20 @@ function selectPlan(text: string, plans: PlanCandidate[]) {
   if (byName) return byName;
 
   const aliases = [
-    { terms: ["250", "duzentos e cinquenta"], chip: false },
-    { terms: ["500", "quinhentos"], chip: false },
-    { terms: ["1gb", "1 giga", "um giga", "1000"], chip: false },
     { terms: ["250", "duzentos e cinquenta"], chip: true },
+    { terms: ["350", "trezentos e cinquenta"], chip: false },
     { terms: ["500", "quinhentos"], chip: true },
+    { terms: ["500", "quinhentos"], chip: false },
     { terms: ["1gb", "1 giga", "um giga", "1000"], chip: true },
+    { terms: ["1gb", "1 giga", "um giga", "1000"], chip: false },
   ];
-  const wantsChip = normalized.includes("chip") || normalized.includes("celular");
+  const wantsChip = normalized.includes("chip") || normalized.includes("celular") || normalized.includes("35gb");
   const alias = aliases.find((item) => item.chip === wantsChip && item.terms.some((term) => normalized.includes(term)));
   if (alias) {
     return plans.find((plan) => {
       const planName = normalizeText(`${plan.name} ${plan.speed}`);
       const hasSpeed = alias.terms.some((term) => planName.includes(normalizeText(term)));
-      const hasChip = planName.includes("chip");
+      const hasChip = planName.includes("chip") || planName.includes("35gb");
       return hasSpeed && hasChip === alias.chip;
     });
   }

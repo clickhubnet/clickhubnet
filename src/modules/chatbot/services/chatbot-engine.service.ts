@@ -1118,7 +1118,7 @@ function promptForState(state: string, firstName?: string) {
     ASK_CEP: "Para eu consultar a cobertura, me envie o CEP da instalação.",
     ASK_STREET_NUMBER: "Me informe o número da residência.",
     ASK_COMPLEMENT: "Agora me informe se há complemento para o endereço.",
-    ASK_ADDRESS_CONFIRM: "Confira o endereço e responda SIM ou NÃO.",
+    ASK_ADDRESS_CONFIRM: "Confira o endereço e toque em Sim ou Não.",
     ASK_NAME: "Agora me informe seu nome completo, por gentileza.",
     ASK_DOCUMENT: `${name}agora me informe seu CPF ou CNPJ, por favor.`,
     ASK_BIRTH_DATE: "Agora me informe sua data de nascimento, por favor.",

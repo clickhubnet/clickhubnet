@@ -87,15 +87,14 @@ export class ZapiService {
   }
 
   async sendButtonList({ phone, message, buttons, config }: SendButtonListInput) {
-    return this.sendInteractive("send-button-list", {
+    return this.sendInteractive("send-button-actions", {
       phone,
       message,
-      buttonList: {
-        buttons: buttons.map((button) => ({
-          id: button.id,
-          label: button.label,
-        })),
-      },
+      buttonActions: buttons.map((button) => ({
+        id: button.id,
+        type: "REPLY",
+        label: button.label,
+      })),
     }, config);
   }
 

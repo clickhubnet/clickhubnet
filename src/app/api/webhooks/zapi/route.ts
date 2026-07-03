@@ -28,6 +28,17 @@ type ZapiWebhookPayload = {
   text?: {
     message?: string;
     body?: string;
+    title?: string;
+    description?: string;
+  };
+  buttonsResponseMessage?: {
+    buttonId?: string;
+    message?: string;
+  };
+  listResponseMessage?: {
+    message?: string;
+    title?: string;
+    selectedRowId?: string;
   };
   image?: { mimeType?: string; imageUrl?: string; caption?: string; downloadError?: string | null };
   document?: { documentUrl?: string; mimeType?: string; fileName?: string; pageCount?: number };
@@ -106,9 +117,20 @@ function isIncomingCallNotification(notification?: string) {
 }
 
 async function extractIncomingMessage(payload: ZapiWebhookPayload) {
+  const interactiveText = [
+    payload.buttonsResponseMessage?.buttonId,
+    payload.buttonsResponseMessage?.message,
+    payload.listResponseMessage?.selectedRowId,
+    payload.listResponseMessage?.title,
+    payload.listResponseMessage?.message,
+  ].filter(Boolean).join(" ").trim();
+  if (interactiveText) return { message: interactiveText };
+
   const text = (
     payload.text?.message ??
     payload.text?.body ??
+    payload.text?.title ??
+    payload.text?.description ??
     payload.message?.text ??
     payload.message?.body ??
     payload.body ??

@@ -317,51 +317,17 @@ export class ChatbotEngineService {
     if (input.state === "ASK_COMPLEMENT") {
       memory.complement = normalizeComplement(text);
       return {
-        state: "ASK_ADDRESS_CONFIRM",
+        state: "ASK_NAME",
         memory,
-        reply: `O endereço que cadastrei no sistema é: ${formatFullAddress(memory)}. Está correto?`,
-        interactive: {
-          type: "button-list",
-          message: "Confirme se o endereço está correto.",
-          buttons: [
-            { id: "address_yes", label: "Sim" },
-            { id: "address_no", label: "Não" },
-          ],
-        },
+        reply: `Endereço anotado: ${formatFullAddress(memory)}. Agora me informe seu *nome completo* por gentileza.`,
       };
     }
 
     if (input.state === "ASK_ADDRESS_CONFIRM") {
-      if (isPositive(text)) {
-        return {
-          state: "ASK_NAME",
-          memory,
-          reply: "Perfeito 🎉! Agora me informe seu *nome completo* por gentileza.",
-        };
-      }
-
-      if (isNegative(text)) {
-        memory.streetNumber = undefined;
-        memory.complement = undefined;
-        return {
-          state: "ASK_STREET_NUMBER",
-          memory,
-          reply: "Sem problema 😊 Vamos corrigir o endereço. Me informe novamente o número da residência.",
-        };
-      }
-
       return {
-        state: "ASK_ADDRESS_CONFIRM",
+        state: "ASK_NAME",
         memory,
-        reply: `O endereço que cadastrei no sistema é: ${formatFullAddress(memory)}. Está correto?`,
-        interactive: {
-          type: "button-list",
-          message: "Confirme se o endereço está correto.",
-          buttons: [
-            { id: "address_yes", label: "Sim" },
-            { id: "address_no", label: "Não" },
-          ],
-        },
+        reply: "Perfeito 🎉! Agora me informe seu *nome completo* por gentileza.",
       };
     }
 
@@ -1027,10 +993,15 @@ function findRecommendedPlan(plans: PlanCandidate[]) {
 function selectPlan(text: string, plans: PlanCandidate[]) {
   const normalized = normalizeText(text);
 
+  const byId = plans.find((plan) => normalized.includes(normalizeText(plan.id)));
+  if (byId) return byId;
+
   const byName = plans.find((plan) => {
     const name = normalizeText(plan.name);
     const speed = normalizeText(plan.speed);
-    return normalized.includes(name) || normalized.includes(speed);
+    const shortTitle = normalizeText(planOptionTitle(plan));
+    const description = normalizeText(planOptionDescription(plan));
+    return normalized.includes(name) || normalized.includes(speed) || normalized.includes(shortTitle) || normalized.includes(description);
   });
   if (byName) return byName;
 
@@ -1118,7 +1089,7 @@ function promptForState(state: string, firstName?: string) {
     ASK_CEP: "Para eu consultar a cobertura, me envie o CEP da instalação.",
     ASK_STREET_NUMBER: "Me informe o número da residência.",
     ASK_COMPLEMENT: "Agora me informe se há complemento para o endereço.",
-    ASK_ADDRESS_CONFIRM: "Confira o endereço e toque em Sim ou Não.",
+    ASK_ADDRESS_CONFIRM: "Agora me informe seu nome completo, por gentileza.",
     ASK_NAME: "Agora me informe seu nome completo, por gentileza.",
     ASK_DOCUMENT: `${name}agora me informe seu CPF ou CNPJ, por favor.`,
     ASK_BIRTH_DATE: "Agora me informe sua data de nascimento, por favor.",

@@ -100,17 +100,11 @@ const flow = {
       message: "Perguntar se há complemento, como casa, apartamento ou bloco.",
     },
     {
-      id: "address-confirm",
-      state: "ASK_ADDRESS_CONFIRM",
-      title: "Confirmação do endereço",
-      message: "Confirmar o endereço completo cadastrado exibindo os botões Sim e Não.",
-    },
-    {
       id: "name",
       state: "ASK_NAME",
       title: "Nome completo",
       message:
-        "Com o endereço confirmado, pedir o nome completo do cliente.",
+        "Após registrar o número e complemento do endereço, pedir o nome completo do cliente.",
     },
     {
       id: "choose-plan",

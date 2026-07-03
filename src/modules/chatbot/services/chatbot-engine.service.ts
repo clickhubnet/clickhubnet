@@ -172,7 +172,7 @@ export class ChatbotEngineService {
       return {
         state: "ASK_CEP",
         memory: {},
-        reply: messageFor("START", `Olá 👋! Eu sou a ${input.agent?.name ?? "Joana"}, atendente virtual da Claro. Estou aqui pra facilitar seu atendimento. Pode me informar o CEP da instalação?`),
+        reply: messageFor("START", greetingMessage(input.agent?.name)),
       };
     }
 
@@ -233,7 +233,7 @@ export class ChatbotEngineService {
       return {
         state: "ASK_CEP",
         memory,
-        reply: messageFor("START", `Olá 👋! Eu sou a ${input.agent?.name ?? "Joana"}, atendente virtual da Claro. Estou aqui pra facilitar seu atendimento. Pode me informar o CEP da instalação?`),
+        reply: messageFor("START", greetingMessage(input.agent?.name)),
       };
     }
 
@@ -265,9 +265,61 @@ export class ChatbotEngineService {
       }
 
       return {
-        state: "ASK_NAME",
+        state: "ASK_STREET_NUMBER",
         memory,
-        reply: `Boa notícia 🎉! Temos viabilidade no CEP ${formatCep(cep)}, localizado ${formatAddressShort(memory)}. Consigo te atender com a Claro 🚀. Para seguir com a contratação, preciso coletar alguns dados seus.\n\nQual é o seu nome completo?`,
+        reply: `Boa notícia 🎉! Temos viabilidade no CEP ${formatCep(cep)}, localizado ${formatAddressShort(memory)}. Consigo te atender com a Claro 🚀. Para seguir com a contratação, preciso coletar alguns dados seus.\n\nMe informe o número da residência:`,
+      };
+    }
+
+    if (input.state === "ASK_STREET_NUMBER") {
+      const streetNumber = parseSimpleNumber(text);
+      if (!streetNumber) {
+        return {
+          state: "ASK_STREET_NUMBER",
+          memory,
+          reply: "Pode me informar somente o número da residência, por favor? 😊",
+        };
+      }
+      memory.streetNumber = streetNumber;
+      return {
+        state: "ASK_COMPLEMENT",
+        memory,
+        reply: "Anotado 😊! Possui algum complemento?",
+      };
+    }
+
+    if (input.state === "ASK_COMPLEMENT") {
+      memory.complement = normalizeComplement(text);
+      return {
+        state: "ASK_ADDRESS_CONFIRM",
+        memory,
+        reply: `O endereço que cadastrei no sistema é: ${formatFullAddress(memory)}. Está correto?\n\nDigite *SIM* ou *NÃO*.`,
+      };
+    }
+
+    if (input.state === "ASK_ADDRESS_CONFIRM") {
+      if (isPositive(text)) {
+        return {
+          state: "ASK_NAME",
+          memory,
+          reply: "Perfeito 🎉! Agora me informe seu *nome completo* por gentileza.",
+        };
+      }
+
+      if (isNegative(text)) {
+        memory.streetNumber = undefined;
+        memory.complement = undefined;
+        return {
+          state: "ASK_STREET_NUMBER",
+          memory,
+          reply: "Sem problema 😊 Vamos corrigir o endereço. Me informe novamente o número da residência.",
+        };
+      }
+
+      return {
+        state: "ASK_ADDRESS_CONFIRM",
+        memory,
+        reply: `O endereço que cadastrei no sistema é: ${formatFullAddress(memory)}. Está correto?\n\nDigite *SIM* ou *NÃO*.`,
       };
     }
 
@@ -276,10 +328,31 @@ export class ChatbotEngineService {
         return { state: "ASK_NAME", memory, reply: "Pode me informar seu nome completo, por favor? 😊" };
       }
       memory.name = toTitleCase(text);
+      const plans = await this.getPlans(input.agent);
       return {
-        state: "ASK_DOCUMENT",
+        state: "CHOOSE_PLAN",
         memory,
-        reply: `Ótimo, ${getFirstName(memory.name)}! 😊 Agora, por favor, me informe o seu CPF ou CNPJ.`,
+        reply: `Muito prazer, ${getFirstName(memory.name)} 😊! Agora chegou a hora de conhecer os melhores planos que têm cobertura na sua residência. Lembrando que todos possuem *Globoplay grátis*:\n\n${formatPlanList(plans)}\n\nQual plano você deseja contratar?`,
+      };
+    }
+
+    if (input.state === "CHOOSE_PLAN") {
+      const plans = await this.getPlans(input.agent);
+      const selectedPlan = selectPlan(text, plans);
+
+      if (!selectedPlan) {
+        if (isPlanRefusal(text)) {
+          return this.handlePlanObjection({ text, state: "CHOOSE_PLAN", memory, plans, agent: input.agent });
+        }
+        return {
+          state: "CHOOSE_PLAN",
+          memory,
+          reply: `Claro! 😊 Estas são as opções disponíveis:\n\n${formatPlanList(plans)}\n\nMe diga o nome, velocidade ou número do plano que você quer contratar.`,
+        };
+      }
+
+      return {
+        ...this.selectPlanAndConfirm({ memory, plan: selectedPlan }),
       };
     }
 
@@ -312,35 +385,9 @@ export class ChatbotEngineService {
       }
       memory.birthDate = birthDate.toISOString();
       return {
-        state: "ASK_STREET_NUMBER",
-        memory,
-        reply: `Data de nascimento aceita! 🎉 Para confirmar, você nasceu no dia ${formatDate(birthDate)}. Agora, por favor, me informe o número da sua residência.`,
-      };
-    }
-
-    if (input.state === "ASK_STREET_NUMBER") {
-      const streetNumber = parseSimpleNumber(text);
-      if (!streetNumber) {
-        return {
-          state: "ASK_STREET_NUMBER",
-          memory,
-          reply: "Pode me informar somente o número da residência, por favor? 😊",
-        };
-      }
-      memory.streetNumber = streetNumber;
-      return {
-        state: "ASK_COMPLEMENT",
-        memory,
-        reply: "Perfeito! Agora, você poderia me informar se há algum complemento para o endereço?",
-      };
-    }
-
-    if (input.state === "ASK_COMPLEMENT") {
-      memory.complement = normalizeComplement(text);
-      return {
         state: "ASK_BILLING_DUE_DAY",
         memory,
-        reply: `Ótimo, ${getFirstName(memory.name)}! 😊 Então, até agora temos:\n\n🏠 Endereço: ${formatFullAddress(memory)}\n\nAgora, por favor, me informe a data de vencimento. Pode ser 5, 8, 10, 15, 20 ou 25 do mês.`,
+        reply: `Data de nascimento aceita! 🎉 Para confirmar, você nasceu no dia ${formatDate(birthDate)}. Agora, por favor, me informe o melhor dia para vencimento da sua fatura: 5, 8, 10, 15, 20 ou 25.`,
       };
     }
 
@@ -357,7 +404,7 @@ export class ChatbotEngineService {
       return {
         state: "ASK_EMAIL",
         memory,
-        reply: `Data de vencimento registrada como ${billingDay}. 📅\n\nAgora, preciso do seu e-mail, por favor! 😊`,
+        reply: `Já anexei no sistema: a sua fatura vence todo dia ${billingDay} do mês. Para finalizar, agora eu só preciso que me informe seu *e-mail*.`,
       };
     }
 
@@ -367,64 +414,11 @@ export class ChatbotEngineService {
         return { state: "ASK_EMAIL", memory, reply: "Esse e-mail não parece válido. Pode me enviar novamente, por favor? 😊" };
       }
       memory.email = email;
-      const plans = await this.getPlans(input.agent);
-      const recommended = findRecommendedPlan(plans);
-      memory.recommendedPlanId = recommended?.id;
       return {
-        state: "RECOMMEND_PLAN",
+        state: "CONFIRM_DATA",
         memory,
-        reply: `Perfeito, ${getFirstName(memory.name)}! O e-mail registrado é: ${email}.\nAgora, vamos falar sobre o plano! Eu recomendo o ${recommended ? `${recommended.name} por ${formatMoney(Number(recommended.price))} + Globoplay (GRÁTIS)` : "melhor combo disponível"} 🚀. Você gostaria de seguir com esse plano ou prefere outra opção?`,
+        reply: `Perfeito, ${getFirstName(memory.name)}! O e-mail registrado é: ${email}.\n\n${buildSummary(memory)}\n\nEstá tudo correto? ✅\n\nDigite *SIM* ou *NÃO*.`,
       };
-    }
-
-    if (input.state === "RECOMMEND_PLAN") {
-      const plans = await this.getPlans(input.agent);
-      const recommended = plans.find((plan) => plan.id === memory.recommendedPlanId) ?? findRecommendedPlan(plans);
-
-      if (isPositive(text) && recommended) {
-        return this.selectPlanAndConfirm({ memory, plan: recommended });
-      }
-
-      if (asksForPlanList(text) || isAlternativeRequest(text)) {
-        return {
-          state: "CHOOSE_PLAN",
-          memory,
-          reply: `Claro! 😊 Aqui estão as opções disponíveis:\n\n${formatPlanList(plans)}\n\nQual deles você gostaria de escolher?`,
-        };
-      }
-
-      const selectedPlan = selectPlan(text, plans);
-      if (selectedPlan) {
-        return this.selectPlanAndConfirm({ memory, plan: selectedPlan });
-      }
-
-      if (isPlanRefusal(text)) {
-        return this.handlePlanObjection({ text, state: "RECOMMEND_PLAN", memory, plans, agent: input.agent });
-      }
-
-      return {
-        state: "CHOOSE_PLAN",
-        memory,
-        reply: `Sem problema 😊 Aqui estão as opções disponíveis:\n\n${formatPlanList(plans)}\n\nQual plano você prefere?`,
-      };
-    }
-
-    if (input.state === "CHOOSE_PLAN") {
-      const plans = await this.getPlans(input.agent);
-      const selectedPlan = selectPlan(text, plans);
-
-      if (!selectedPlan) {
-        if (isPlanRefusal(text)) {
-          return this.handlePlanObjection({ text, state: "CHOOSE_PLAN", memory, plans, agent: input.agent });
-        }
-        return {
-          state: "CHOOSE_PLAN",
-          memory,
-          reply: `Claro! 😊 Estas são as opções disponíveis:\n\n${formatPlanList(plans)}\n\nMe diga o nome, velocidade ou número do plano que você quer contratar.`,
-        };
-      }
-
-      return this.selectPlanAndConfirm({ memory, plan: selectedPlan });
     }
 
     if (input.state === "CONFIRM_DATA") {
@@ -468,7 +462,7 @@ export class ChatbotEngineService {
       return {
         state: "CONFIRM_DATA",
         memory,
-        reply: `${buildSummary(memory)}\n\nEstá tudo correto? ✅`,
+        reply: `${buildSummary(memory)}\n\nEstá tudo correto? ✅\n\nDigite *SIM* ou *NÃO*.`,
       };
     }
 
@@ -508,7 +502,7 @@ export class ChatbotEngineService {
     return {
       state: "ASK_CEP",
       memory: {},
-      reply: messageFor("START", `Olá 👋! Eu sou a ${input.agent?.name ?? "Joana"}, atendente virtual da Claro. Estou aqui pra facilitar seu atendimento. Pode me informar o CEP da instalação?`),
+      reply: messageFor("START", greetingMessage(input.agent?.name)),
     };
   }
 
@@ -526,9 +520,9 @@ export class ChatbotEngineService {
     };
 
     return {
-      state: "CONFIRM_DATA",
+      state: "ASK_DOCUMENT",
       memory,
-      reply: `Ótima escolha, ${getFirstName(memory.name)}! 🎉 Você optou pelo ${input.plan.name} por ${formatMoney(Number(input.plan.price))} + Globoplay (GRÁTIS).\n${buildSummary(memory)}\n\nEstá tudo correto? ✅`,
+      reply: `Tenho que confessar 😊! *${input.plan.name}* é um plano excelente. Parabéns pela escolha, ${getFirstName(memory.name)}.\n\nAgora, para continuar, me informe seu *CPF ou CNPJ*.`,
     };
   }
 
@@ -1052,14 +1046,14 @@ function promptForState(state: string, firstName?: string) {
   const name = firstName ? `${firstName}, ` : "";
   const prompts: Record<string, string> = {
     ASK_CEP: "Para eu consultar a cobertura, me envie o CEP da instalação.",
-    ASK_NAME: "Qual é o seu nome completo?",
+    ASK_STREET_NUMBER: "Me informe o número da residência.",
+    ASK_COMPLEMENT: "Agora me informe se há complemento para o endereço.",
+    ASK_ADDRESS_CONFIRM: "Confira o endereço e responda SIM ou NÃO.",
+    ASK_NAME: "Agora me informe seu nome completo, por gentileza.",
     ASK_DOCUMENT: `${name}agora me informe seu CPF ou CNPJ, por favor.`,
     ASK_BIRTH_DATE: "Agora me informe sua data de nascimento, por favor.",
-    ASK_STREET_NUMBER: "Agora me informe o número da sua residência.",
-    ASK_COMPLEMENT: "Agora me informe se há complemento para o endereço.",
     ASK_BILLING_DUE_DAY: "Qual vencimento você prefere: 5, 8, 10, 15, 20 ou 25?",
     ASK_EMAIL: "Agora preciso do seu e-mail, por favor.",
-    RECOMMEND_PLAN: "Você quer seguir com o plano recomendado ou ver outras opções?",
     CHOOSE_PLAN: "Qual plano você gostaria de escolher?",
   };
   return prompts[state] ?? "Me envie a próxima informação para continuarmos.";
@@ -1075,7 +1069,7 @@ function callResumePrompt(
       flowMessage(
         agent?.flow,
         "START",
-        `Olá! Eu sou a ${agent?.name ?? "Joana"}, consultora comercial da Claro. Pode me informar o CEP da instalação?`,
+        greetingMessage(agent?.name),
       ),
       memory,
       agent?.name,
@@ -1090,10 +1084,10 @@ function extractedValueForState(state: string, data?: ExtractedCustomerData) {
   if (!data) return undefined;
   const values: Record<string, string | undefined> = {
     ASK_CEP: data.cep,
+    ASK_STREET_NUMBER: data.streetNumber,
     ASK_NAME: data.fullName,
     ASK_DOCUMENT: data.cpf,
     ASK_BIRTH_DATE: data.birthDate,
-    ASK_STREET_NUMBER: data.streetNumber,
     ASK_EMAIL: data.email,
   };
   return values[state];
@@ -1158,6 +1152,21 @@ function interpolate(template: string, memory: ChatMemory, agentName?: string) {
     .replaceAll("{{nome}}", getFirstName(memory.name) || "cliente")
     .replaceAll("{{cep}}", formatCep(memory.cep))
     .replaceAll("{{endereco}}", formatFullAddress(memory));
+}
+
+function greetingMessage(agentName?: string) {
+  const hour = Number(
+    new Intl.DateTimeFormat("pt-BR", {
+      hour: "numeric",
+      hour12: false,
+      timeZone: "America/Sao_Paulo",
+    }).format(new Date()),
+  );
+
+  const greeting =
+    hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
+
+  return `Olá, ${greeting}! Eu sou a ${agentName ?? "Joana"}!\nConsultora da Claro, para verificar se na sua região tem cobertura, poderia me informar o *CEP da instalação?*`;
 }
 
 function agentConfig(agent: Awaited<ReturnType<ChatbotRepository["getAgentByInstance"]>>) {

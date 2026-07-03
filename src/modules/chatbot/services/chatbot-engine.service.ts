@@ -185,8 +185,9 @@ export class ChatbotEngineService {
     extractedData?: ExtractedCustomerData;
   }): Promise<NextBotResponse> {
     const originalText = input.message.trim();
-    const text = extractedValueForState(input.state, input.extractedData) ?? originalText;
     const memory = { ...input.memory };
+    applyExtractedAddress(memory, input.extractedData);
+    const text = extractedValueForState(input.state, input.extractedData) ?? originalText;
     const firstName = getFirstName(memory.name);
     const messageFor = (state: string, fallback: string) => interpolate(
       flowMessage(input.agent?.flow, state, fallback),
@@ -211,11 +212,11 @@ export class ChatbotEngineService {
       };
     }
 
-    if (input.extractedData && text === originalText) {
+    if (input.extractedData && text === originalText && !hasUsefulExtractedDataForState(input.state, input.extractedData)) {
       return {
         state: input.state,
         memory,
-        reply: `Recebi o arquivo ou áudio, mas não consegui identificar com segurança o dado necessário. Envie novamente com boa qualidade ou escreva a informação, por favor. 😊\n\n${promptForState(input.state, firstName)}`,
+        reply: mediaFallbackReply(input.state, firstName),
       };
     }
 
@@ -762,11 +763,31 @@ function normalizeWhatsappPhone(phone: string) {
 }
 
 function parseCep(text: string) {
+  const explicitCep = text.match(/\b\d{5}-?\d{3}\b/);
+  if (explicitCep) {
+    return explicitCep[0].replace(/\D/g, "");
+  }
+
+  const spacedCep = text.match(/\b\d{5}\s+\d{3}\b/);
+  if (spacedCep) {
+    return spacedCep[0].replace(/\D/g, "");
+  }
+
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .reverse();
+  for (const line of lines) {
+    const lineCep = line.match(/\b\d{5}-?\d{3}\b/);
+    if (lineCep) return lineCep[0].replace(/\D/g, "");
+  }
+
   const digits = onlyDigits(text);
-  if (digits.length >= 8) return digits.slice(0, 8);
+  if (/^\d{8}$/.test(digits)) return digits;
 
   const byWords = wordsToDigits(text);
-  return byWords.length >= 8 ? byWords.slice(0, 8) : "";
+  return /^\d{8}$/.test(byWords) ? byWords : "";
 }
 
 function parseDocument(text: string): { valid: false; type?: never; formatted?: never } | { valid: true; type: "CPF" | "CNPJ"; formatted: string } {
@@ -1117,13 +1138,48 @@ function extractedValueForState(state: string, data?: ExtractedCustomerData) {
   if (!data) return undefined;
   const values: Record<string, string | undefined> = {
     ASK_CEP: data.cep,
-    ASK_STREET_NUMBER: data.streetNumber,
+    ASK_STREET_NUMBER: data.streetNumber ?? parseStreetNumberFromAddress(data.address),
     ASK_NAME: data.fullName,
     ASK_DOCUMENT: data.cpf,
     ASK_BIRTH_DATE: data.birthDate,
     ASK_EMAIL: data.email,
   };
   return values[state];
+}
+
+function parseStreetNumberFromAddress(address?: string) {
+  if (!address) return "";
+  const match = address.match(/\b(\d{1,6})\b/);
+  return match?.[1] ?? "";
+}
+
+function hasUsefulExtractedDataForState(state: string, data?: ExtractedCustomerData) {
+  return Boolean(extractedValueForState(state, data));
+}
+
+function applyExtractedAddress(memory: ChatMemory, data?: ExtractedCustomerData) {
+  if (!data) return;
+  applyAddress(memory, {
+    street: data.address,
+    neighborhood: data.neighborhood,
+    city: data.city,
+    state: data.state,
+  });
+  if (!memory.streetNumber) {
+    memory.streetNumber = data.streetNumber ?? parseStreetNumberFromAddress(data.address) ?? memory.streetNumber;
+  }
+}
+
+function mediaFallbackReply(state: string, firstName?: string) {
+  const replies: Record<string, string> = {
+    ASK_CEP: "Recebi o comprovante, mas não consegui identificar o CEP com segurança. Pode me enviar o CEP digitado, por favor? 😊",
+    ASK_STREET_NUMBER: "Recebi o comprovante, mas não consegui identificar com segurança o número da residência. Pode me enviar só o número, por favor? 😊",
+    ASK_NAME: "Recebi o documento, mas não consegui confirmar com segurança o nome completo. Pode me escrever seu nome, por favor? 😊",
+    ASK_DOCUMENT: "Recebi o documento, mas não consegui confirmar com segurança o CPF ou CNPJ. Pode me enviar digitado, por favor? 😊",
+    ASK_BIRTH_DATE: "Recebi o documento, mas não consegui confirmar com segurança a data de nascimento. Pode me enviar no formato 26/01/1998, por favor? 😊",
+    ASK_EMAIL: "Recebi o arquivo, mas não consegui identificar o e-mail com segurança. Pode me enviar digitado, por favor? 😊",
+  };
+  return replies[state] ?? `Recebi o arquivo, mas não consegui identificar com segurança o dado necessário.\n\n${promptForState(state, firstName)}`;
 }
 
 function asksForPlanList(text: string) {

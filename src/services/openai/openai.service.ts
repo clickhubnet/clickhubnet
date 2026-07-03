@@ -34,10 +34,12 @@ export class OpenAiService {
             type: "input_text",
             text: [
               "Leia este documento brasileiro e extraia somente dados explicitamente visiveis.",
-              "Pode ser conta de consumo, RG, CNH ou outro comprovante.",
+              "Pode ser conta de consumo, comprovante de residencia, RG, CNH ou outro documento.",
               "Nunca deduza nem complete dados ilegíveis. Use null quando não houver certeza.",
               "Responda apenas JSON válido, sem markdown, neste formato:",
-              '{"cep":null,"fullName":null,"cpf":null,"birthDate":null,"streetNumber":null,"address":null,"email":null}',
+              '{"cep":null,"fullName":null,"cpf":null,"birthDate":null,"streetNumber":null,"address":null,"neighborhood":null,"city":null,"state":null,"email":null}',
+              "Se for comprovante de residencia, priorize extrair CEP, logradouro, numero, bairro, cidade, estado, nome e CPF quando estiverem legiveis.",
+              "Em address, retorne somente o logradouro sem numero, bairro, cidade ou estado.",
               "Normalize CEP como 8 dígitos, CPF como 11 dígitos e nascimento como DD/MM/AAAA.",
             ].join("\n"),
           },
@@ -82,6 +84,9 @@ export type ExtractedCustomerData = {
   birthDate?: string;
   streetNumber?: string;
   address?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
   email?: string;
 };
 
@@ -99,6 +104,9 @@ function parseExtractedCustomerData(value: string): ExtractedCustomerData {
       birthDate: text("birthDate"),
       streetNumber: text("streetNumber"),
       address: text("address"),
+      neighborhood: text("neighborhood"),
+      city: text("city"),
+      state: text("state"),
       email: text("email"),
     };
   } catch {

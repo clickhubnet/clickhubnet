@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { ensureInitialUsers } from "./initial-users";
+import { ensureInitialUsers } from "@/lib/initial-users";
 
 async function main() {
   const users = await ensureInitialUsers();

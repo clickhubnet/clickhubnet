@@ -52,6 +52,10 @@ const fallbackUsers: InitialUser[] = [
   },
 ];
 
+const globalForInitialUsers = globalThis as typeof globalThis & {
+  initialUsersEnsured?: Promise<void>;
+};
+
 export function getInitialUsers() {
   const rawUsers = process.env.INITIAL_USERS_JSON?.trim();
 
@@ -112,4 +116,12 @@ export async function ensureInitialUsers() {
   }
 
   return createdUsers;
+}
+
+export async function ensureInitialUsersOnce() {
+  if (!globalForInitialUsers.initialUsersEnsured) {
+    globalForInitialUsers.initialUsersEnsured = ensureInitialUsers().then(() => undefined);
+  }
+
+  return globalForInitialUsers.initialUsersEnsured;
 }

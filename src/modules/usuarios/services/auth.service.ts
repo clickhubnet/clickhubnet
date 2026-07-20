@@ -1,4 +1,5 @@
 import { AuditAction } from "@prisma/client";
+import { ensureInitialUsersOnce } from "@/lib/initial-users";
 import { prisma } from "@/lib/prisma";
 import { signAuthToken } from "@/lib/jwt";
 import { verifyPassword } from "@/lib/password";
@@ -12,6 +13,8 @@ type LoginInput = {
 
 export class AuthService {
   async login({ email, password, ip, userAgent }: LoginInput) {
+    await ensureInitialUsersOnce();
+
     const user = await prisma.user.findFirst({
       where: { email: email.toLowerCase().trim(), deletedAt: null },
     });

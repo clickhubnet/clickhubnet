@@ -38,7 +38,8 @@ export async function POST(request: Request) {
     });
 
     return response;
-  } catch {
+  } catch (error) {
+    console.error("Login error", error);
     return NextResponse.json(errorResponse("E-mail ou senha invalidos.", "INVALID_CREDENTIALS"), {
       status: 401,
     });

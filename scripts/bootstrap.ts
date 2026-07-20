@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { prisma } from "@/lib/prisma";
+import { ensureInitialUsers } from "@/lib/initial-users";
 import { CepImportService } from "@/modules/ceps/services/cep-import.service";
-import { ensureInitialUsers } from "./initial-users";
 
 const leadStages = [
   { name: "Novos", status: "NEW", order: 10 },

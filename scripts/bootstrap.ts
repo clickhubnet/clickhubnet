@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { prisma } from "@/lib/prisma";
-import { hashPassword } from "@/lib/password";
 import { CepImportService } from "@/modules/ceps/services/cep-import.service";
+import { ensureInitialUsers } from "./initial-users";
 
 const leadStages = [
   { name: "Novos", status: "NEW", order: 10 },
@@ -18,42 +18,6 @@ const appointmentStages = [
   { name: "Em andamento", status: "Em andamento", order: 20 },
   { name: "Concluido", status: "Concluido", order: 30 },
 ] as const;
-
-async function ensureAdminUser() {
-  const passwordHash = await hashPassword("roots2601");
-
-  return prisma.user.upsert({
-    where: { email: "joana@central.com" },
-    update: {
-      name: "Joana",
-      passwordHash,
-      role: "ADMIN",
-      status: "ACTIVE",
-      deletedAt: null,
-      title: "Administradora",
-      theme: "light",
-      passwordChangedAt: new Date(),
-    },
-    create: {
-      name: "Joana",
-      email: "joana@central.com",
-      passwordHash,
-      role: "ADMIN",
-      status: "ACTIVE",
-      title: "Administradora",
-      permissions: {},
-      theme: "light",
-      passwordChangedAt: new Date(),
-    },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      role: true,
-      status: true,
-    },
-  });
-}
 
 async function ensureLeadStages() {
   for (const stage of leadStages) {
@@ -106,7 +70,7 @@ async function importCeps() {
 }
 
 async function main() {
-  const user = await ensureAdminUser();
+  const users = await ensureInitialUsers();
   const activeLeadStages = await ensureLeadStages();
   const activeAppointmentStages = await ensureAppointmentStages();
   const cepImport = await importCeps();
@@ -119,7 +83,7 @@ async function main() {
   console.log(
     JSON.stringify(
       {
-        adminUser: user,
+        users,
         activeLeadStages,
         activeAppointmentStages,
         plans,

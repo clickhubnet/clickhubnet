@@ -10,9 +10,9 @@ export const metadata: Metadata = {
   title: appConfig.name,
   description: "Painel comercial para operacao de planos, vendas e atendimento.",
   icons: {
-    icon: "/brand/logosemfundo.png",
-    shortcut: "/brand/logosemfundo.png",
-    apple: "/brand/logosemfundo.png",
+    icon: "/favicon.png",
+    shortcut: "/favicon.png",
+    apple: "/favicon.png",
   },
 };
 

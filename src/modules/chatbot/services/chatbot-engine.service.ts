@@ -3,7 +3,7 @@ import { CepRepository } from "@/repositories/cep.repository";
 import { ChatbotRepository } from "@/repositories/chatbot.repository";
 import { OpenAiService } from "@/services/openai/openai.service";
 import type { ExtractedCustomerData } from "@/services/openai/openai.service";
-import { markEvolutionMessageAsRead, sendEvolutionTextMessage, setEvolutionChatPresence } from "@/services/evolution";
+import { sendEvolutionTextMessage } from "@/services/evolution";
 import { ZapiService } from "@/services/zapi/zapi.service";
 import { onlyDigits } from "@/utils/mask";
 
@@ -127,10 +127,6 @@ export class ChatbotEngineService {
     if (input.providerId && provider === "zapi") {
       await this.zapiService.markAsRead(input.providerId, phone, agentConfig(agent));
     }
-    if (input.providerId && provider === "evolution") {
-      await markEvolutionMessageAsRead({ phone, messageId: input.providerId });
-    }
-
     const next = await this.nextResponse({
       phone,
       message: input.message,
@@ -146,10 +142,6 @@ export class ChatbotEngineService {
     const typingEnabled =
       (agent?.enableReplyDelay ?? true) && (agent?.enableTyping ?? true);
 
-    if (provider === "evolution" && typingEnabled) {
-      await setEvolutionChatPresence({ phone, state: "composing" });
-    }
-
     await this.chatbotRepository.updateConversation({
       id: conversation.id,
       state: next.state,
@@ -158,9 +150,6 @@ export class ChatbotEngineService {
     });
     if (provider === "evolution") {
       await sendEvolutionTextMessage({ to: phone, message: next.reply, delayTypingSeconds: typingEnabled ? delaySeconds : undefined });
-      if (typingEnabled) {
-        await setEvolutionChatPresence({ phone, state: "paused" });
-      }
     } else {
       await this.zapiService.sendText({
         phone,

@@ -1,7 +1,7 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { MessageCircle, Phone, Plus, RefreshCw, Send, Tag, Trash2, X } from "lucide-react";
+import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { Ban, MessageCircle, Phone, Plus, RefreshCw, Send, Tag, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -48,6 +48,7 @@ export function ConversationsPanel() {
   const [newConversation, setNewConversation] = useState(emptyNewConversation);
   const [message, setMessage] = useState("");
   const [newTag, setNewTag] = useState("");
+  const [createModalOpen, setCreateModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [sending, setSending] = useState(false);
@@ -59,6 +60,7 @@ export function ConversationsPanel() {
     [activeId, conversations],
   );
   const activeTags = useMemo(() => getConversationTags(active), [active]);
+  const activeBlocked = isConversationBlocked(active);
   const availableTags = useMemo(() => {
     return Array.from(new Set(conversations.flatMap((conversation) => getConversationTags(conversation)))).sort((a, b) => a.localeCompare(b));
   }, [conversations]);
@@ -113,12 +115,13 @@ export function ConversationsPanel() {
     }
 
     setNewConversation(emptyNewConversation);
+    setCreateModalOpen(false);
     await refreshConversations(result.data.id);
   }
 
   async function handleSendMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!active || !message.trim() || sending) return;
+    if (!active || activeBlocked || !message.trim() || sending) return;
     setSending(true);
     setError("");
     const outgoingText = message.trim();
@@ -186,6 +189,41 @@ export function ConversationsPanel() {
     setNewTag("");
   }
 
+  async function toggleActiveBlocked() {
+    if (!active) return;
+    const nextBlocked = !activeBlocked;
+    if (nextBlocked && !window.confirm(`Bloquear ${getConversationName(active)}? As novas mensagens desse número serão ignoradas.`)) return;
+    const previousState = typeof active.memory?.previousState === "string" ? active.memory.previousState : undefined;
+    const nextState = nextBlocked ? "BLOCKED" : previousState ?? "MANUAL";
+
+    setConversations((current) => current.map((conversation) =>
+      conversation.id === active.id
+        ? {
+            ...conversation,
+            state: nextState,
+            memory: {
+              ...conversation.memory,
+              blocked: nextBlocked,
+              previousState: nextBlocked ? conversation.state : previousState,
+            },
+          }
+        : conversation,
+    ));
+
+    const response = await fetch("/api/conversations", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: active.id, blocked: nextBlocked }),
+    });
+    const result = await response.json() as ApiResult<ChatConversation>;
+    if (result.status !== "success") {
+      setError(result.message);
+      await refreshConversations(active.id);
+      return;
+    }
+    setConversations((current) => mergeConversations([result.data], current));
+  }
+
   async function handleDeleteConversation() {
     if (!active || !window.confirm(`Excluir conversa de ${getConversationName(active)}?`)) return;
     setError("");
@@ -214,31 +252,18 @@ export function ConversationsPanel() {
                 {refreshing && !loading ? "Atualizando em tempo real..." : "Mensagens em tempo real"}
               </p>
             </div>
-            <Button size="icon" variant="ghost" type="button" onClick={() => void refreshConversations()} aria-label="Atualizar conversas">
-              <RefreshCw className="h-4 w-4" />
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button size="sm" type="button" onClick={() => setCreateModalOpen(true)}>
+                <Plus className="h-4 w-4" />
+                Chamar novo número
+              </Button>
+              <Button size="icon" variant="ghost" type="button" onClick={() => void refreshConversations()} aria-label="Atualizar conversas">
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-4">
-          <form className="space-y-3 rounded-md border bg-muted/30 p-3" onSubmit={handleCreateConversation}>
-            <div className="flex items-center gap-2 text-sm font-medium">
-              <Plus className="h-4 w-4" />
-              Nova conversa
-            </div>
-            <Input
-              value={newConversation.name}
-              onChange={(event) => setNewConversation((current) => ({ ...current, name: event.target.value }))}
-              placeholder="Nome do contato"
-            />
-            <Input
-              value={newConversation.phone}
-              onChange={(event) => setNewConversation((current) => ({ ...current, phone: event.target.value }))}
-              placeholder="+5511999999999"
-              required
-            />
-            <Button className="w-full" type="submit" size="sm">Iniciar</Button>
-          </form>
-
           {error ? <p className="rounded-md bg-red-500/10 p-3 text-sm text-red-600">{error}</p> : null}
 
           <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
@@ -259,6 +284,7 @@ export function ConversationsPanel() {
                         <Phone className="h-3 w-3" />
                         {conversation.phone}
                       </p>
+                      {isConversationBlocked(conversation) ? <p className="mt-1 text-xs font-medium text-red-600">Contato bloqueado</p> : null}
                     </div>
                     <TagList tags={getConversationTags(conversation)} compact />
                   </div>
@@ -290,12 +316,24 @@ export function ConversationsPanel() {
                     <TagList tags={activeTags} onRemove={(tag) => void updateActiveTags(activeTags.filter((item) => item !== tag))} />
                   </div>
                 </div>
-                <Button variant="ghost" size="icon" type="button" onClick={() => void handleDeleteConversation()} aria-label="Excluir conversa">
-                  <Trash2 className="h-4 w-4 text-red-500" />
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button variant={activeBlocked ? "outline" : "secondary"} size="sm" type="button" onClick={() => void toggleActiveBlocked()}>
+                    <Ban className="h-4 w-4 text-red-500" />
+                    {activeBlocked ? "Desbloquear" : "Bloquear"}
+                  </Button>
+                  <Button variant="destructive" size="sm" type="button" onClick={() => void handleDeleteConversation()} aria-label="Apagar conversa">
+                    <Trash2 className="h-4 w-4" />
+                    Apagar
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="flex min-h-0 flex-1 flex-col p-0">
+              {activeBlocked ? (
+                <div className="border-b bg-red-500/10 px-4 py-3 text-sm font-medium text-red-700">
+                  Este contato está bloqueado. Novas mensagens recebidas desse número serão ignoradas.
+                </div>
+              ) : null}
               <div className="border-b bg-background p-3">
                 <form className="flex flex-col gap-2 sm:flex-row" onSubmit={handleCreateTag}>
                   <Input
@@ -348,9 +386,10 @@ export function ConversationsPanel() {
                     className="min-h-12 resize-none"
                     value={message}
                     onChange={(event) => setMessage(event.target.value)}
-                    placeholder="Digite uma mensagem"
+                    placeholder={activeBlocked ? "Contato bloqueado" : "Digite uma mensagem"}
+                    disabled={activeBlocked}
                   />
-                  <Button className="h-auto px-5" type="submit" disabled={sending || !message.trim()}>
+                  <Button className="h-auto px-5" type="submit" disabled={activeBlocked || sending || !message.trim()}>
                     <Send className="h-4 w-4" />
                     {sending ? "Enviando" : "Enviar"}
                   </Button>
@@ -365,6 +404,27 @@ export function ConversationsPanel() {
           </CardContent>
         )}
       </Card>
+      {createModalOpen ? (
+        <Modal title="Chamar novo número" onClose={() => setCreateModalOpen(false)}>
+          <form className="space-y-3" onSubmit={handleCreateConversation}>
+            <Input
+              value={newConversation.name}
+              onChange={(event) => setNewConversation((current) => ({ ...current, name: event.target.value }))}
+              placeholder="Nome do contato"
+            />
+            <Input
+              value={newConversation.phone}
+              onChange={(event) => setNewConversation((current) => ({ ...current, phone: event.target.value }))}
+              placeholder="+5511999999999"
+              required
+            />
+            <Button className="w-full" type="submit">
+              <Phone className="h-4 w-4" />
+              Iniciar conversa
+            </Button>
+          </form>
+        </Modal>
+      ) : null}
     </div>
   );
 }
@@ -399,6 +459,11 @@ function getConversationTags(conversation?: ChatConversation) {
     if (tag && typeof tag === "object" && "label" in tag) return String((tag as { label?: unknown }).label ?? "");
     return "";
   }));
+}
+
+function isConversationBlocked(conversation?: ChatConversation) {
+  if (!conversation) return false;
+  return conversation.state === "BLOCKED" || conversation.memory?.blocked === true;
 }
 
 function normalizeTags(tags: string[]) {
@@ -484,4 +549,20 @@ function isFailedLocalMessage(message: ChatMessage) {
 function getLocalMessageStatus(message: ChatMessage) {
   if (!message.rawPayload || typeof message.rawPayload !== "object") return "";
   return String((message.rawPayload as { status?: unknown }).status ?? "");
+}
+
+function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <div className="w-full max-w-md rounded-md border bg-background shadow-2xl">
+        <div className="flex items-center justify-between border-b px-5 py-4">
+          <h2 className="font-semibold">{title}</h2>
+          <Button size="icon" variant="ghost" type="button" onClick={onClose} aria-label="Fechar">
+            <X className="h-5 w-5" />
+          </Button>
+        </div>
+        <div className="p-5">{children}</div>
+      </div>
+    </div>
+  );
 }

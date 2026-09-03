@@ -102,18 +102,27 @@ export class ChatbotRepository {
     assignedTo?: string;
     tags?: unknown;
     state?: string;
+    blocked?: boolean;
   }) {
     const current = await prisma.chatConversation.findUnique({ where: { id: input.id } });
     const memory = normalizeJsonObject(current?.memory);
+    const previousState = typeof memory.previousState === "string" ? memory.previousState : undefined;
+    const nextState = input.blocked === true
+      ? "BLOCKED"
+      : input.blocked === false
+        ? previousState ?? "MANUAL"
+        : input.state ?? current?.state;
     return prisma.chatConversation.update({
       where: { id: input.id },
       data: {
-        state: input.state ?? current?.state,
+        state: nextState,
         memory: normalizeJsonValue({
           ...memory,
           contactName: input.name ?? memory.contactName,
           assignedTo: input.assignedTo ?? memory.assignedTo,
           tags: input.tags ?? memory.tags,
+          blocked: input.blocked ?? memory.blocked,
+          previousState: input.blocked === true ? (previousState ?? current?.state ?? "MANUAL") : previousState,
         }),
       },
       include: { messages: { orderBy: { createdAt: "asc" } } },

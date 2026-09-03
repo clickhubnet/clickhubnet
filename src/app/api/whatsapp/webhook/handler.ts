@@ -56,6 +56,10 @@ export async function handleEvolutionWebhook(request: Request) {
     return NextResponse.json(successResponse("Mensagem propria ignorada.", { ignored: true }));
   }
 
+  if (await isBlockedConversation(parsed.phone)) {
+    return NextResponse.json(successResponse("Contato bloqueado ignorado.", { ignored: true, blocked: true }));
+  }
+
   const body = parsed.message || defaultWebhookMessageLabel(parsed.kind);
   try {
     const result = await chatbotEngineService.processIncomingMessage({
@@ -117,6 +121,19 @@ async function upsertConversationMemory(phone: string, input: Record<string, unk
     where: { id: conversation.id },
     data: { memory: { ...memory, ...input } as Prisma.InputJsonValue },
   });
+}
+
+async function isBlockedConversation(phone: string) {
+  const conversation = await prisma.chatConversation.findFirst({
+    where: { phone, deletedAt: null },
+    orderBy: { updatedAt: "desc" },
+    select: { memory: true, state: true },
+  });
+  if (!conversation) return false;
+  const memory = conversation.memory && typeof conversation.memory === "object" && !Array.isArray(conversation.memory)
+    ? conversation.memory as Record<string, unknown>
+    : {};
+  return conversation.state === "BLOCKED" || memory.blocked === true;
 }
 
 function defaultWebhookMessageLabel(kind: string) {

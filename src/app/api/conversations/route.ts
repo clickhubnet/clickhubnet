@@ -63,12 +63,13 @@ export async function PUT(request: Request) {
       assignedTo?: string;
       tags?: unknown;
       state?: string;
+      blocked?: boolean;
     };
     if (!body.id) {
       return NextResponse.json(errorResponse("ID obrigatorio.", "VALIDATION_ERROR"), { status: 422 });
     }
 
-    const conversation = await conversationService.update(body as { id: string; name?: string; assignedTo?: string; tags?: unknown; state?: string });
+    const conversation = await conversationService.update(body as { id: string; name?: string; assignedTo?: string; tags?: unknown; state?: string; blocked?: boolean });
     return NextResponse.json(successResponse("Conversa atualizada.", conversation));
   } catch (error) {
     const authError = authErrorResponse(error);

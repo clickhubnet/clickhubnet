@@ -85,15 +85,6 @@ export function ConversationsPanel() {
 
   useEffect(() => {
     void refreshConversations();
-    const onFocus = () => void refreshConversations();
-    const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible") void refreshConversations();
-    }, 3000);
-    window.addEventListener("focus", onFocus);
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener("focus", onFocus);
-    };
   }, []);
 
   useEffect(() => {

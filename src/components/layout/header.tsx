@@ -17,11 +17,9 @@ export function Header({ title: _title }: HeaderProps) {
   const router = useRouter();
   const currentUser = useCurrentUser();
   const { data: user } = currentUser;
-  const today = new Intl.DateTimeFormat("pt-BR", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-  }).format(new Date());
+  const now = new Date();
+  const month = new Intl.DateTimeFormat("pt-BR", { month: "long" }).format(now);
+  const today = `${String(now.getDate()).padStart(2, "0")} de ${month.charAt(0).toUpperCase()}${month.slice(1)}, ${now.getFullYear()}`;
 
   useEffect(() => {
     setTheme("dark");

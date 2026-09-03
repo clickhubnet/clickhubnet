@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { RotateCcw, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,20 +21,6 @@ export function DashboardPanel() {
   const [appliedTo, setAppliedTo] = useState("");
   const [refreshKey, setRefreshKey] = useState(() => Date.now());
 
-  useEffect(() => {
-    const refresh = () => setRefreshKey(Date.now());
-    const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible") refresh();
-    }, 30_000);
-    window.addEventListener("focus", refresh);
-    window.addEventListener("crm:dashboard-refresh", refresh);
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener("focus", refresh);
-      window.removeEventListener("crm:dashboard-refresh", refresh);
-    };
-  }, []);
-
   const dashboardUrl = useMemo(() => {
     const params = new URLSearchParams();
     params.set("refresh", String(refreshKey));
@@ -52,7 +38,7 @@ export function DashboardPanel() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col items-end gap-3">
+      <div className="-mt-[74px] mb-[22px] flex flex-col items-end gap-3">
         <div className="flex gap-2">
           <select
             className="h-10 w-[118px] rounded-[8px] border border-[#0d376d] bg-[#031936]/80 px-3 text-sm text-[#c6d1e6]"
@@ -94,6 +80,7 @@ export function DashboardPanel() {
               setAppliedPeriod(period);
               setAppliedFrom(period === "custom" ? from : "");
               setAppliedTo(period === "custom" ? to : "");
+              setRefreshKey(Date.now());
             }}
           >
             <Search className="h-4 w-4" aria-hidden="true" />
@@ -109,6 +96,7 @@ export function DashboardPanel() {
               setAppliedPeriod("30");
               setAppliedFrom("");
               setAppliedTo("");
+              setRefreshKey(Date.now());
             }}
           >
             <RotateCcw className="h-4 w-4" aria-hidden="true" />

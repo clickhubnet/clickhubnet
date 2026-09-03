@@ -550,7 +550,7 @@ function extractPresenceStatus(payload: Record<string, unknown>, data: Record<st
 
 function resolveMessageKind(data: Record<string, unknown>): "texto" | "imagem" | "audio" | "video" | "documento" {
   const messageType = String(data.messageType ?? "").toLowerCase();
-  const message = data.message && typeof data.message === "object" ? (data.message as Record<string, unknown>) : {};
+  const message = resolveWebhookMessageObject(data);
   if (message.imageMessage || messageType.includes("image")) return "imagem";
   if (message.audioMessage || messageType.includes("audio") || messageType.includes("ptt")) return "audio";
   if (message.videoMessage || messageType.includes("video")) return "video";
@@ -559,7 +559,7 @@ function resolveMessageKind(data: Record<string, unknown>): "texto" | "imagem" |
 }
 
 function extractMessageText(data: Record<string, unknown>) {
-  const message = data.message && typeof data.message === "object" ? (data.message as Record<string, unknown>) : {};
+  const message = resolveWebhookMessageObject(data);
   const candidates: unknown[] = [
     data.text,
     data.body,
@@ -583,8 +583,8 @@ function extractMessageText(data: Record<string, unknown>) {
 }
 
 function extractMediaData(data: Record<string, unknown>, kind: string) {
-  const message = data.message && typeof data.message === "object" ? (data.message as Record<string, unknown>) : {};
-  const nestedPayloads = [message.imageMessage, message.audioMessage, message.videoMessage, message.documentMessage, data]
+  const message = resolveWebhookMessageObject(data);
+  const nestedPayloads = [message, message.imageMessage, message.audioMessage, message.videoMessage, message.documentMessage, data]
     .filter((value): value is Record<string, unknown> => Boolean(value) && typeof value === "object");
 
   const mediaUrl = firstString(
@@ -593,6 +593,11 @@ function extractMediaData(data: Record<string, unknown>, kind: string) {
   const mimeType = firstString(nestedPayloads.flatMap((item) => [item.mimetype, item.mimeType]));
   const fileName = firstString(nestedPayloads.flatMap((item) => [item.fileName, item.filename, item.title, kind === "audio" ? "audio.ogg" : ""]));
   return { mediaUrl, mimeType, fileName };
+}
+
+function resolveWebhookMessageObject(data: Record<string, unknown>) {
+  const message = data.message ?? data.Message;
+  return message && typeof message === "object" ? (message as Record<string, unknown>) : {};
 }
 
 function mapEvolutionMessageStatus(value: unknown): "enviado" | "entregue" | "lido" | "falha" {

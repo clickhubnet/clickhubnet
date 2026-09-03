@@ -896,7 +896,7 @@ function parseCep(text: string) {
   if (normalizedDigits) return normalizedDigits;
 
   const byWords = wordsToDigits(text);
-  return normalizeCepDigits(byWords);
+  return normalizeCepDigits(byWords) || spokenPortugueseCepToDigits(text);
 }
 
 function normalizeCepDigits(value: string) {
@@ -1403,6 +1403,157 @@ function wordsToDigits(value: string) {
     .split(" ")
     .map((word) => digitWords[word] ?? "")
     .join("");
+}
+
+function spokenPortugueseCepToDigits(value: string) {
+  const tokens = normalizeText(value)
+    .split(" ")
+    .filter((token) => token && token !== "e" && token !== "cep");
+  const pieces: string[] = [];
+
+  for (let index = 0; index < tokens.length;) {
+    const singleDigit = spokenDigit(tokens[index]);
+    if (singleDigit !== null) {
+      pieces.push(singleDigit);
+      index += 1;
+      continue;
+    }
+
+    let matched = false;
+    for (let size = Math.min(5, tokens.length - index); size >= 1; size -= 1) {
+      const phrase = tokens.slice(index, index + size);
+      const parsed = parsePortugueseNumber(phrase);
+      if (!parsed) continue;
+
+      pieces.push(String(parsed.value).padStart(parsed.width, "0"));
+      index += size;
+      matched = true;
+      break;
+    }
+
+    if (!matched) index += 1;
+  }
+
+  return normalizeCepDigits(pieces.join(""));
+}
+
+function spokenDigit(word: string) {
+  const digits: Record<string, string> = {
+    zero: "0",
+    um: "1",
+    uma: "1",
+    dois: "2",
+    duas: "2",
+    tres: "3",
+    quatro: "4",
+    cinco: "5",
+    seis: "6",
+    sete: "7",
+    oito: "8",
+    nove: "9",
+  };
+  return digits[word] ?? null;
+}
+
+function parsePortugueseNumber(tokens: string[]) {
+  const units: Record<string, number> = {
+    um: 1,
+    uma: 1,
+    dois: 2,
+    duas: 2,
+    tres: 3,
+    quatro: 4,
+    cinco: 5,
+    seis: 6,
+    sete: 7,
+    oito: 8,
+    nove: 9,
+  };
+  const teens: Record<string, number> = {
+    dez: 10,
+    onze: 11,
+    doze: 12,
+    treze: 13,
+    catorze: 14,
+    quatorze: 14,
+    quinze: 15,
+    dezesseis: 16,
+    dezasseis: 16,
+    dezessete: 17,
+    dezassete: 17,
+    dezoito: 18,
+    dezenove: 19,
+    dezanove: 19,
+  };
+  const tens: Record<string, number> = {
+    vinte: 20,
+    trinta: 30,
+    quarenta: 40,
+    cinquenta: 50,
+    sessenta: 60,
+    setenta: 70,
+    oitenta: 80,
+    noventa: 90,
+  };
+  const hundreds: Record<string, number> = {
+    cem: 100,
+    cento: 100,
+    duzentos: 200,
+    trezentos: 300,
+    quatrocentos: 400,
+    quinhentos: 500,
+    seiscentos: 600,
+    setecentos: 700,
+    oitocentos: 800,
+    novecentos: 900,
+  };
+
+  let total = 0;
+  let hasHundred = false;
+  let hasTen = false;
+  let hasUnit = false;
+  let hundredCount = 0;
+  let tenCount = 0;
+  let teenCount = 0;
+  let unitCount = 0;
+
+  for (const token of tokens.filter((item) => item !== "e")) {
+    if (hundreds[token]) {
+      hundredCount += 1;
+      if (hundredCount > 1) return null;
+      total += hundreds[token];
+      hasHundred = true;
+      continue;
+    }
+    if (teens[token]) {
+      teenCount += 1;
+      if (teenCount > 1 || tenCount > 0 || unitCount > 0) return null;
+      total += teens[token];
+      hasTen = true;
+      continue;
+    }
+    if (tens[token]) {
+      tenCount += 1;
+      if (tenCount > 1 || teenCount > 0) return null;
+      total += tens[token];
+      hasTen = true;
+      continue;
+    }
+    if (units[token]) {
+      unitCount += 1;
+      if (unitCount > 1 || teenCount > 0) return null;
+      total += units[token];
+      hasUnit = true;
+      continue;
+    }
+    return null;
+  }
+
+  if (!total) return null;
+  if (hasHundred) return { value: total, width: 3 };
+  if (hasTen) return { value: total, width: 2 };
+  if (hasUnit) return { value: total, width: 1 };
+  return null;
 }
 
 function isHandoffRequest(text: string) {

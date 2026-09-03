@@ -131,7 +131,10 @@ export class ChatbotEngineService {
       phone,
       message: input.message,
       state: conversation.state,
-      memory: normalizeMemory(conversation.memory),
+      memory: {
+        ...normalizeMemory(conversation.memory),
+        whatsapp: phone,
+      },
       agent,
       extractedData: input.extractedData,
     });
@@ -481,7 +484,7 @@ export class ChatbotEngineService {
       if (isPositive(text)) {
         const lead = await this.chatbotRepository.createLeadFromChat({
           name: memory.name ?? "Lead WhatsApp",
-          phone: input.phone,
+          phone: memory.whatsapp ?? input.phone,
           email: memory.email,
           cpfCnpj: memory.cpfCnpj,
           birthDate: memory.birthDate ? new Date(memory.birthDate) : undefined,
@@ -805,6 +808,7 @@ type ChatMemory = {
   complement?: string;
   cpfCnpj?: string;
   documentType?: "CPF" | "CNPJ";
+  whatsapp?: string;
   birthDate?: string;
   email?: string;
   billingDueDay?: number;
@@ -1089,6 +1093,7 @@ function buildSummary(memory: ChatMemory) {
     `💰 ${memory.planValue ? `${formatMoney(memory.planValue)}/mês` : "Não informado"}`,
     "━━━━━━━━━━━━━━━━━━",
     `👤 Nome: ${memory.name ?? "Não informado"}`,
+    `📲 WhatsApp: ${memory.whatsapp ?? "Não informado"}`,
     `🆔 ${memory.documentType ?? "CPF"}: ${memory.cpfCnpj ?? "Não informado"}`,
     `🎂 Nascimento: ${birthDate}`,
     `📧 E-mail: ${memory.email ?? "Não informado"}`,

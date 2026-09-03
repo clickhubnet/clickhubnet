@@ -207,11 +207,7 @@ export class ChatbotEngineService {
     applyExtractedAddress(memory, input.extractedData);
     const text = extractedValueForState(input.state, input.extractedData) ?? originalText;
     const firstName = getFirstName(memory.name);
-    const messageFor = (state: string, fallback: string) => interpolate(
-      flowMessage(input.agent?.flow, state, fallback),
-      memory,
-      input.agent?.name,
-    );
+    applyParsedCustomerData(memory, text, input.state);
 
     if (isRestartRequest(text)) {
       return {
@@ -242,7 +238,7 @@ export class ChatbotEngineService {
       const plans = await this.getPlans(input.agent);
       const recommended = findRecommendedPlan(plans);
       const recommendation = recommended
-        ? `Para essa necessidade, recomendo o ${recommended.name} por ${formatMoney(Number(recommended.price))} + Globoplay (GRÁTIS). É a opção mais completa entre os planos disponíveis. 😊`
+        ? `Para essa necessidade, recomendo o ${recommended.name} por ${formatMoney(Number(recommended.price))}/mês. É uma das opções mais completas entre os planos disponíveis. 😊`
         : "No momento não há planos ativos vinculados a este atendimento.";
       return {
         state: input.state,
@@ -303,16 +299,16 @@ export class ChatbotEngineService {
 
       if (!coverage) {
         return {
-          state: "FINISHED_UNAVAILABLE",
+          state: "ASK_STREET_NUMBER",
           memory,
-          reply: `Encontrei seu endereço 😊,📍 CEP ${formatCep(cep)}, localizado ${formatAddressShort(memory)}. No momento a Claro ainda não possui disponibilidade para instalação nessa região. Assim que houver expansão de cobertura, teremos prazer em atendê-lo. Obrigado pelo seu interesse! 💙`,
+          reply: addressFoundMessage(memory),
         };
       }
 
       return {
         state: "ASK_STREET_NUMBER",
         memory,
-        reply: `Boa notícia 🎉! Temos viabilidade no CEP ${formatCep(cep)}, localizado ${formatAddressShort(memory)}. Consigo te atender com a Claro 🚀. Para seguir com a contratação, preciso coletar alguns dados seus.\n\nMe informe o número da residência:`,
+        reply: addressFoundMessage(memory),
       };
     }
 
@@ -329,44 +325,65 @@ export class ChatbotEngineService {
       return {
         state: "ASK_COMPLEMENT",
         memory,
-        reply: "Anotado 😊! Possui algum complemento?",
+        reply: "Anotado! 😊\nO endereço possui algum complemento, como apartamento, bloco, condomínio ou casa dos fundos? 🏠\nSe não tiver, pode responder apenas “Não”.",
       };
     }
 
     if (input.state === "ASK_COMPLEMENT") {
       memory.complement = normalizeComplement(text);
-      return {
-        state: "ASK_NAME",
-        memory,
-        reply: `Endereço anotado: ${formatFullAddress(memory)}. Agora me informe seu *nome completo* por gentileza.`,
-      };
-    }
-
-    if (input.state === "ASK_ADDRESS_CONFIRM") {
-      return {
-        state: "ASK_NAME",
-        memory,
-        reply: "Perfeito 🎉! Agora me informe seu *nome completo* por gentileza.",
-      };
-    }
-
-    if (input.state === "ASK_NAME") {
-      if (text.length < 3 || onlyDigits(text).length > 2) {
-        return { state: "ASK_NAME", memory, reply: "Pode me informar seu nome completo, por favor? 😊" };
-      }
-      memory.name = toTitleCase(text);
       const plans = await this.getPlans(input.agent);
       return {
         state: "CHOOSE_PLAN",
         memory,
-        reply: `Muito prazer, ${getFirstName(memory.name)} 😊! Agora chegou a hora de conhecer os melhores planos que têm cobertura na sua residência. Lembrando que todos possuem *Globoplay grátis*.\n\nToque no botão *Ver planos* para abrir a lista de opções.`,
+        reply: `Perfeito! 😊 Seu endereço ficou:\n📍 ${formatFullAddress(memory)}\n\nAgora vou te apresentar os planos disponíveis para contratação. 🛜🚀\n\n${formatPlanList(plans)}\n\nSe você estiver procurando custo-benefício, eu daria uma atenção especial aos melhores planos disponíveis. 😉\nQual você prefere?\n👉 Pode me responder apenas com o número da opção.`,
         interactive: buildPlanOptionList(plans),
       };
+    }
+
+    if (input.state === "ASK_ADDRESS_CONFIRM") {
+      const plans = await this.getPlans(input.agent);
+      return {
+        state: "CHOOSE_PLAN",
+        memory,
+        reply: `Perfeito 🎉!\n\n${formatPlanList(plans)}\n\nQual plano você prefere?`,
+        interactive: buildPlanOptionList(plans),
+      };
+    }
+
+    if (input.state === "ASK_NAME") {
+      memory.name = extractNameFromText(text) || memory.name;
+      if (!memory.name && (text.length < 3 || onlyDigits(text).length > 2)) {
+        return { state: "ASK_NAME", memory, reply: "Pode me informar seu nome completo, por favor? 😊" };
+      }
+      if (!memory.name) memory.name = toTitleCase(text);
+      return nextCustomerDataResponse(memory, `Muito prazer, ${getFirstName(memory.name)}! 😊\nSeu nome já está registrado. ✅\n\n`);
     }
 
     if (input.state === "CHOOSE_PLAN") {
       const plans = await this.getPlans(input.agent);
       const selectedPlan = selectPlan(text, plans);
+
+      if (memory.pendingUpsellPlanId && memory.planId) {
+        const pendingUpsell = plans.find((plan) => plan.id === memory.pendingUpsellPlanId);
+        const originalPlan = plans.find((plan) => plan.id === memory.planId);
+        const selectedPending = selectedPlan?.id === pendingUpsell?.id;
+        const selectedOriginal = selectedPlan?.id === originalPlan?.id;
+
+        if ((isPositive(text) || selectedPending) && pendingUpsell) {
+          memory.pendingUpsellPlanId = undefined;
+          return this.selectPlanAndConfirm({ memory, plan: pendingUpsell });
+        }
+
+        if ((isNegative(text) || selectedOriginal) && originalPlan && pendingUpsell) {
+          memory.pendingUpsellPlanId = undefined;
+          memory.declinedUpsellPlanIds = [...(memory.declinedUpsellPlanIds ?? []), pendingUpsell.id];
+          return this.selectPlanAndConfirm({
+            memory,
+            plan: originalPlan,
+            prefix: `Sem problemas! 😊\nEntão vamos continuar com:\n🛜 ${originalPlan.name}\n💰 ${formatMoney(Number(originalPlan.price))}/mês\n\n`,
+          });
+        }
+      }
 
       if (!selectedPlan) {
         if (isPlanRefusal(text)) {
@@ -375,8 +392,22 @@ export class ChatbotEngineService {
         return {
           state: "CHOOSE_PLAN",
           memory,
-          reply: `Claro! 😊 Toque no botão *Ver planos* para abrir a lista e escolher a opção desejada. Se preferir, você também pode escrever o nome do plano.`,
+          reply: `Claro! 😊 Estes são os planos disponíveis:\n\n${formatPlanList(plans)}\n\nQual você prefere? Pode responder com o número da opção ou com o nome do plano.`,
           interactive: buildPlanOptionList(plans),
+        };
+      }
+
+      const upsell = findUpsellCandidate(selectedPlan, plans, memory);
+      if (upsell) {
+        memory.planId = selectedPlan.id;
+        memory.planName = selectedPlan.name;
+        memory.planValue = Number(selectedPlan.price);
+        memory.pendingUpsellPlanId = upsell.id;
+        memory.offeredUpsellPlanIds = [...(memory.offeredUpsellPlanIds ?? []), upsell.id];
+        return {
+          state: "CHOOSE_PLAN",
+          memory,
+          reply: upsellMessage(selectedPlan, upsell),
         };
       }
 
@@ -387,37 +418,40 @@ export class ChatbotEngineService {
 
     if (input.state === "ASK_DOCUMENT") {
       const document = parseDocument(text);
-      if (!document.valid) {
+      if (!document.valid && !memory.cpfCnpj) {
         return {
           state: "ASK_DOCUMENT",
           memory,
           reply: "Esse CPF ou CNPJ não parece válido. Pode conferir e me enviar novamente, por favor? 😊",
         };
       }
-      memory.cpfCnpj = document.formatted;
-      memory.documentType = document.type;
-      return {
-        state: "ASK_BIRTH_DATE",
-        memory,
-        reply: `${document.type} válido! ✅ Agora, por favor, me informe a sua data de nascimento.`,
-      };
+      if (document.valid) {
+        memory.cpfCnpj = document.formatted;
+        memory.documentType = document.type;
+      }
+      return nextCustomerDataResponse(memory, `Perfeito! ✅ ${memory.documentType ?? "CPF"} registrado.\nEstamos avançando com seu cadastro. 😊\n\n`);
     }
 
     if (input.state === "ASK_BIRTH_DATE") {
       const birthDate = parseBirthDate(text);
-      if (!birthDate) {
+      if (!birthDate && !memory.birthDate) {
         return {
           state: "ASK_BIRTH_DATE",
           memory,
           reply: "Não consegui identificar a data. Pode enviar no formato 26/01/1998, por favor? 😊",
         };
       }
-      memory.birthDate = birthDate.toISOString();
-      return {
-        state: "ASK_BILLING_DUE_DAY",
-        memory,
-        reply: `Data de nascimento aceita! 🎉 Para confirmar, você nasceu no dia ${formatDate(birthDate)}. Agora, por favor, me informe o melhor dia para vencimento da sua fatura: 5, 8, 10, 15, 20 ou 25.`,
-      };
+      if (birthDate) memory.birthDate = birthDate.toISOString();
+      return nextCustomerDataResponse(memory, `Perfeito! 🎉\n📅 Data de nascimento registrada: ${formatDate(new Date(memory.birthDate ?? ""))}\nEstamos quase terminando seus dados. 😊\n\n`);
+    }
+
+    if (input.state === "ASK_EMAIL") {
+      const email = parseEmail(text);
+      if (!email && !memory.email) {
+        return { state: "ASK_EMAIL", memory, reply: "Esse e-mail não parece válido. Pode me enviar novamente, por favor? 😊" };
+      }
+      if (email) memory.email = email;
+      return nextCustomerDataResponse(memory, `Perfeito! ✅\n📧 Registrei: ${memory.email}\n\n`);
     }
 
     if (input.state === "ASK_BILLING_DUE_DAY") {
@@ -431,22 +465,9 @@ export class ChatbotEngineService {
       }
       memory.billingDueDay = billingDay;
       return {
-        state: "ASK_EMAIL",
-        memory,
-        reply: `Já anexei no sistema: a sua fatura vence todo dia ${billingDay} do mês. Para finalizar, agora eu só preciso que me informe seu *e-mail*.`,
-      };
-    }
-
-    if (input.state === "ASK_EMAIL") {
-      const email = parseEmail(text);
-      if (!email) {
-        return { state: "ASK_EMAIL", memory, reply: "Esse e-mail não parece válido. Pode me enviar novamente, por favor? 😊" };
-      }
-      memory.email = email;
-      return {
         state: "CONFIRM_DATA",
         memory,
-        reply: `Perfeito, ${getFirstName(memory.name)}! O e-mail registrado é: ${email}.\n\n${buildSummary(memory)}\n\nEstá tudo correto? ✅\n\nDigite *SIM* ou *NÃO*.`,
+        reply: `Perfeito! 😊 Vencimento escolhido para o dia ${billingDay}.\nChegamos à última confirmação. 🎉\n\n${buildSummary(memory)}\n\nEstá tudo correto? 😊\n👉 Digite *SIM* para confirmar sua solicitação.\nCaso alguma informação esteja incorreta, responda *NÃO* que eu te ajudo a corrigir.`,
       };
     }
 
@@ -469,14 +490,14 @@ export class ChatbotEngineService {
           planId: memory.planId,
           planName: memory.planName,
           expectedValue: memory.planValue,
-          notes: "Lead finalizado pelo fluxo do chatbot Joana.",
+          notes: "Lead finalizado pelo fluxo do chatbot Lily.",
         });
 
         return {
           state: "FINISHED",
           memory,
           leadId: lead.id,
-          reply: "Perfeito! 🎉 Seus dados foram confirmados.\n\nVou cadastrar aqui, deixa o celular ligado 📱, porque aprovando você receberá uma ligação da Click Hubnet. Você precisa confirmar as informações do seu plano contratado, tudo bem?\n\nObrigado por escolher a Claro! 🚀 Se precisar de qualquer coisa, é só me chamar!",
+          reply: `Perfeito, ${getFirstName(memory.name) || "cliente"}! 🎉💙\nSua solicitação foi registrada com sucesso. ✅\n\nAgora seus dados seguirão para análise, validação das informações e verificação da disponibilidade para instalação no endereço. 🛜\n\n📱 Fique atento ao seu celular, pois nossa equipe poderá entrar em contato para concluir a validação.\n\nPara agilizar o atendimento, deixe separado:\n🪪 RG ou CNH\n🏠 Comprovante de residência\n\nApós a validação e aprovação, nossa equipe seguirá com você para verificar as opções disponíveis e, sendo possível a instalação, realizar o agendamento. 🚀\n\n⚠️ É importante atender ao contato da nossa equipe para evitar atrasos na sua solicitação.\nObrigado pela preferência! 💙`,
         };
       }
 
@@ -484,7 +505,7 @@ export class ChatbotEngineService {
         return {
           state: "CORRECTION",
           memory,
-          reply: "Entendi 😊, tudo bem! O que você gostaria de corrigir?",
+          reply: "Sem problemas! 😊 Vamos corrigir.\nMe informe qual dado precisa ser alterado:\n1️⃣ Nome\n2️⃣ CPF\n3️⃣ Data de nascimento\n4️⃣ E-mail\n5️⃣ Endereço\n6️⃣ Vencimento\n7️⃣ Plano\n\n👉 Digite o número da opção que deseja corrigir.\nApós a correção, eu te mostro novamente o resumo completo antes de confirmar. ✅",
         };
       }
 
@@ -496,11 +517,28 @@ export class ChatbotEngineService {
     }
 
     if (input.state === "CORRECTION") {
-      const corrected = await this.applyCorrection(text, memory, input.agent);
+      const correctionField = memory.correctionField ?? parseCorrectionField(text);
+      if (!correctionField) {
+        return {
+          state: "CORRECTION",
+          memory,
+          reply: "Me diga qual dado quer corrigir:\n1️⃣ Nome\n2️⃣ CPF\n3️⃣ Data de nascimento\n4️⃣ E-mail\n5️⃣ Endereço\n6️⃣ Vencimento\n7️⃣ Plano",
+        };
+      }
+      if (!memory.correctionField && isCorrectionChoiceOnly(text)) {
+        memory.correctionField = correctionField;
+        return {
+          state: "CORRECTION",
+          memory,
+          reply: correctionPrompt(correctionField),
+        };
+      }
+      const corrected = await this.applyCorrection(text, { ...memory, correctionField }, input.agent);
+      corrected.correctionField = undefined;
       return {
         state: "CONFIRM_DATA",
         memory: corrected,
-        reply: `${buildSummary(corrected)}\n\nEstá tudo correto? ✅`,
+        reply: `${buildSummary(corrected)}\n\nEstá tudo correto? 😊\n👉 Digite *SIM* para confirmar sua solicitação.\nCaso ainda tenha algo incorreto, responda *NÃO*.`,
       };
     }
 
@@ -540,19 +578,19 @@ export class ChatbotEngineService {
     return this.chatbotRepository.listActivePlans(agent.id);
   }
 
-  private selectPlanAndConfirm(input: { memory: ChatMemory; plan: PlanCandidate }): NextBotResponse {
+  private selectPlanAndConfirm(input: { memory: ChatMemory; plan: PlanCandidate; prefix?: string }): NextBotResponse {
     const memory = {
       ...input.memory,
       planId: input.plan.id,
       planName: input.plan.name,
       planValue: Number(input.plan.price),
+      pendingUpsellPlanId: undefined,
     };
 
-    return {
-      state: "ASK_DOCUMENT",
+    return nextCustomerDataResponse(
       memory,
-      reply: `Tenho que confessar 😊! *${input.plan.name}* é um plano excelente. Parabéns pela escolha, ${getFirstName(memory.name)}.\n\nAgora, para continuar, me informe seu *CPF ou CNPJ*.`,
-    };
+      input.prefix ?? `Ótima escolha! 😊🛜\nEntão ficou:\n🚀 ${input.plan.name}\n💰 ${formatMoney(Number(input.plan.price))}/mês\n\nAgora vou iniciar seus dados para seguirmos com a solicitação. ✅\n`,
+    );
   }
 
   private async handlePlanObjection(input: {
@@ -588,7 +626,7 @@ export class ChatbotEngineService {
     return {
       state: input.state,
       memory,
-      reply: answer || "Entendo você 😊 Pela estabilidade da Claro e pelo Globoplay incluso, vale muito a pena garantir agora. Qual plano faz mais sentido pra você?",
+      reply: answer || "Entendo você 😊 Se quiser, posso te ajudar a comparar as opções disponíveis pelo custo-benefício. Qual plano faz mais sentido pra você?",
     };
   }
 
@@ -607,7 +645,35 @@ export class ChatbotEngineService {
     const document = parseDocument(text);
     const cep = parseCep(text);
 
-    if (selectedPlan) {
+    if (corrected.correctionField === "plan" && selectedPlan) {
+      corrected.planId = selectedPlan.id;
+      corrected.planName = selectedPlan.name;
+      corrected.planValue = Number(selectedPlan.price);
+    } else if (corrected.correctionField === "billing" && billingDay) {
+      corrected.billingDueDay = billingDay;
+    } else if (corrected.correctionField === "email" && email) {
+      corrected.email = email;
+    } else if (corrected.correctionField === "birthDate" && birthDate) {
+      corrected.birthDate = birthDate.toISOString();
+    } else if (corrected.correctionField === "document" && document.valid) {
+      corrected.cpfCnpj = document.formatted;
+      corrected.documentType = document.type;
+    } else if (corrected.correctionField === "address" && cep) {
+      corrected.cep = cep;
+      const [coverage, viaCep] = await Promise.all([this.validateCoverage(cep), fetchViaCep(cep)]);
+      applyAddress(corrected, {
+        street: coverage?.street ?? viaCep?.street,
+        neighborhood: coverage?.neighborhood ?? viaCep?.neighborhood,
+        city: coverage?.city ?? viaCep?.city,
+        state: coverage?.state ?? viaCep?.state,
+      });
+    } else if (corrected.correctionField === "address" && /numero|n[uú]mero|casa|residencia|residência/.test(normalized)) {
+      corrected.streetNumber = parseSimpleNumber(text) ?? corrected.streetNumber;
+    } else if (corrected.correctionField === "address" && /complemento|apto|apartamento|casa|bloco|fundos/.test(normalized)) {
+      corrected.complement = normalizeComplement(text.replace(/complemento/gi, "").trim());
+    } else if (corrected.correctionField === "name" && (/nome/.test(normalized) || text.split(/\s+/).length >= 2)) {
+      corrected.name = toTitleCase(text.replace(/nome/gi, "").trim());
+    } else if (selectedPlan) {
       corrected.planId = selectedPlan.id;
       corrected.planName = selectedPlan.name;
       corrected.planValue = Number(selectedPlan.price);
@@ -653,11 +719,11 @@ export class ChatbotEngineService {
 
       return await this.openAiService.answerCommercialQuestion(
         [
-          `Voce e ${input.agent?.name ?? "Joana"}, Consultora Comercial da Claro em um atendimento pelo WhatsApp.`,
+          `Voce e ${input.agent?.name ?? "Lily"}, consultora comercial de planos de internet fibra em um atendimento pelo WhatsApp.`,
           `Personalidade: ${input.agent?.personality ?? "Vendedora humana, simpatica, persuasiva e objetiva."}`,
           `Regras personalizadas:\n${formatAgentRules(input.agent?.rules)}`,
           "Responda em portugues do Brasil, de forma breve, vendedora e natural.",
-          "Nunca invente preco, cobertura ou plano. Use somente os planos listados.",
+          "Nunca invente preco, cobertura, operadora disponivel, prazo, taxa, fidelidade, promocao ou plano. Use somente os dados listados.",
           "Use no maximo um emoji.",
           "Depois de responder, conduza o cliente para escolher um plano.",
           `Cliente: ${input.customerName ?? "cliente"}`,
@@ -679,11 +745,12 @@ export class ChatbotEngineService {
     try {
       return await this.openAiService.answerCommercialQuestion(
         [
-          `Voce e ${input.agent?.name ?? "Joana"}, Consultora Comercial da Claro.`,
+          `Voce e ${input.agent?.name ?? "Lily"}, consultora comercial de planos de internet fibra.`,
           `Personalidade: ${input.agent?.personality ?? "Vendedora humana, cordial e objetiva."}`,
           `Regras:\n${formatAgentRules(input.agent?.rules)}`,
           `O funil esta na etapa ${input.state}. Responda a duvida sem pular etapa.`,
           "Nao responda temas politicos, religiosos ou fora do contexto comercial.",
+          "Nunca confirme cobertura, disponibilidade tecnica, prazo, taxa, fidelidade ou promocao se essa informacao nao estiver cadastrada.",
           "Nunca diga que e IA, robo ou secretario eletronico.",
           "Use no maximo um emoji.",
           `Cliente: ${input.customerName ?? "cliente"}`,
@@ -691,7 +758,7 @@ export class ChatbotEngineService {
         ].join("\n\n"),
       );
     } catch {
-      return "Posso te orientar sobre os planos e a contratação da Claro. 😊";
+      return "Posso te orientar sobre os planos e a solicitação de contratação. 😊";
     }
   }
 }
@@ -741,7 +808,13 @@ type ChatMemory = {
   recommendedPlanId?: string;
   handoff?: boolean;
   objectionCount?: number;
+  pendingUpsellPlanId?: string;
+  offeredUpsellPlanIds?: string[];
+  declinedUpsellPlanIds?: string[];
+  correctionField?: CorrectionField;
 };
+
+type CorrectionField = "name" | "document" | "birthDate" | "email" | "address" | "billing" | "plan";
 
 type PlanCandidate = {
   id: string;
@@ -983,23 +1056,29 @@ function formatFullAddress(memory: ChatMemory) {
 function buildSummary(memory: ChatMemory) {
   const birthDate = memory.birthDate ? formatDate(new Date(memory.birthDate)) : "Não informado";
   return [
-    "Aqui estão os dados que você me passou até agora:",
-    `📍 CEP: ${formatCep(memory.cep)}`,
+    "Confira sua solicitação:",
+    "━━━━━━━━━━━━━━━━━━",
+    "🛜 PLANO",
+    `${memory.planName ?? "Não informado"}`,
+    `💰 ${memory.planValue ? `${formatMoney(memory.planValue)}/mês` : "Não informado"}`,
+    "━━━━━━━━━━━━━━━━━━",
     `👤 Nome: ${memory.name ?? "Não informado"}`,
-    `🆔 Documento: ${memory.cpfCnpj ?? "Não informado"}`,
+    `🆔 ${memory.documentType ?? "CPF"}: ${memory.cpfCnpj ?? "Não informado"}`,
     `🎂 Data de nascimento: ${birthDate}`,
-    `🏠 Endereço: ${formatFullAddress(memory)}`,
     `📧 E-mail: ${memory.email ?? "Não informado"}`,
-    `📅 Data de vencimento: ${memory.billingDueDay ?? "Não informado"}`,
-    `📶 Plano: ${memory.planName ?? "Não informado"}`,
+    `📍 CEP: ${formatCep(memory.cep)}`,
+    `🏠 Endereço: ${formatFullAddress(memory)}`,
+    `📅 Vencimento: ${memory.billingDueDay ? `Dia ${memory.billingDueDay}` : "Não informado"}`,
+    "━━━━━━━━━━━━━━━━━━",
   ].join("\n");
 }
 
 function formatPlanList(plans: PlanCandidate[]) {
   if (!plans.length) return "No momento não há planos ativos cadastrados.";
-  return plans
-    .map((plan, index) => `${index + 1}. ${plan.name} - ${formatMoney(Number(plan.price))}/mês`)
-    .join("\n");
+  return [
+    "🛜 PLANOS DE INTERNET FIBRA",
+    ...plans.map((plan, index) => `${index + 1}. ${plan.name} — ${formatMoney(Number(plan.price))}/mês`),
+  ].join("\n");
 }
 
 function buildPlanOptionList(plans: PlanCandidate[]): Extract<InteractivePayload, { type: "option-list" }> {
@@ -1027,6 +1106,103 @@ function findRecommendedPlan(plans: PlanCandidate[]) {
       !mostExpensive || Number(plan.price) > Number(mostExpensive.price) ? plan : mostExpensive,
     undefined,
   );
+}
+
+function findUpsellCandidate(selectedPlan: PlanCandidate, plans: PlanCandidate[], memory: ChatMemory) {
+  const selectedPrice = Number(selectedPlan.price);
+  const selectedSpeed = planSpeedMbps(selectedPlan);
+  if (!selectedPrice || !selectedSpeed) return null;
+
+  const declined = new Set(memory.declinedUpsellPlanIds ?? []);
+  const offered = new Set(memory.offeredUpsellPlanIds ?? []);
+  return plans
+    .filter((plan) => plan.id !== selectedPlan.id)
+    .filter((plan) => !declined.has(plan.id) && !offered.has(plan.id))
+    .map((plan) => ({ plan, speed: planSpeedMbps(plan), price: Number(plan.price) }))
+    .filter((item) => item.speed > selectedSpeed && item.price > selectedPrice)
+    .map((item) => ({ ...item, difference: item.price - selectedPrice }))
+    .filter((item) => item.difference <= 10)
+    .sort((a, b) => a.difference - b.difference || a.speed - b.speed)[0]?.plan ?? null;
+}
+
+function upsellMessage(selectedPlan: PlanCandidate, upsellPlan: PlanCandidate) {
+  const difference = Number(upsellPlan.price) - Number(selectedPlan.price);
+  return [
+    "Antes de continuarmos, deixa eu te mostrar uma opção que pode compensar bastante. 😊",
+    "",
+    `🔹 ${selectedPlan.name} — ${formatMoney(Number(selectedPlan.price))}/mês`,
+    `⭐ ${upsellPlan.name} — ${formatMoney(Number(upsellPlan.price))}/mês`,
+    "",
+    `A diferença é de apenas ${formatMoney(difference)} por mês e você leva mais velocidade. 🚀`,
+    `Quer aproveitar o ${upsellPlan.name} por ${formatMoney(Number(upsellPlan.price))}/mês ou prefere continuar com o ${selectedPlan.name}?`,
+  ].join("\n");
+}
+
+function planSpeedMbps(plan: PlanCandidate) {
+  const normalized = normalizeText(`${plan.name} ${plan.speed}`);
+  const gigaMatch = normalized.match(/(\d+(?:\s|)?)\s*giga/);
+  if (gigaMatch) return Number(gigaMatch[1].trim() || 1) * 1000;
+  const megaMatch = normalized.match(/(\d+)\s*mega/);
+  if (megaMatch) return Number(megaMatch[1]);
+  return 0;
+}
+
+function addressFoundMessage(memory: ChatMemory) {
+  return [
+    "Perfeito! 😊 Localizei o endereço:",
+    `📍 ${formatAddressShort(memory)}`,
+    "",
+    "Agora só preciso completar o endereço.",
+    "Qual é o número da residência? 🏠",
+  ].join("\n");
+}
+
+function nextCustomerDataResponse(memory: ChatMemory, prefix = ""): NextBotResponse {
+  if (!memory.name) {
+    return {
+      state: "ASK_NAME",
+      memory,
+      reply: `${prefix}Qual é o seu nome completo, por favor? 👤`,
+    };
+  }
+
+  if (!memory.cpfCnpj) {
+    return {
+      state: "ASK_DOCUMENT",
+      memory,
+      reply: `${prefix}Agora preciso de uma informação necessária para seguirmos com a solicitação e análise do cadastro.\n🔐 Me informe o seu CPF, por favor.`,
+    };
+  }
+
+  if (!memory.birthDate) {
+    return {
+      state: "ASK_BIRTH_DATE",
+      memory,
+      reply: `${prefix}📅 Agora preciso da sua data de nascimento.\nPode me informar no formato DD/MM/AAAA?`,
+    };
+  }
+
+  if (!memory.email) {
+    return {
+      state: "ASK_EMAIL",
+      memory,
+      reply: `${prefix}📧 Agora me informe o seu e-mail, por favor.`,
+    };
+  }
+
+  if (!memory.billingDueDay) {
+    return {
+      state: "ASK_BILLING_DUE_DAY",
+      memory,
+      reply: `${prefix}Agora falta escolher o melhor dia para o vencimento da sua fatura. 💳\n📅 Você pode escolher:\n05 • 08 • 10 • 15 • 20 • 25\n\nQual dia fica melhor para você?`,
+    };
+  }
+
+  return {
+    state: "CONFIRM_DATA",
+    memory,
+    reply: `${prefix}${buildSummary(memory)}\n\nEstá tudo correto? 😊\n👉 Digite *SIM* para confirmar sua solicitação.\nCaso alguma informação esteja incorreta, responda *NÃO* que eu te ajudo a corrigir.`,
+  };
 }
 
 function selectPlan(text: string, plans: PlanCandidate[]) {
@@ -1069,6 +1245,42 @@ function selectPlan(text: string, plans: PlanCandidate[]) {
   }
 
   return null;
+}
+
+function applyParsedCustomerData(memory: ChatMemory, text: string, state: string) {
+  const cep = parseCep(text);
+  const document = parseDocument(text);
+  const birthDate = parseBirthDate(text);
+  const email = parseEmail(text);
+  const billingDay = state === "ASK_BILLING_DUE_DAY" || state === "CORRECTION" ? parseBillingDay(text) : null;
+  const name = extractNameFromText(text);
+
+  if (cep) memory.cep = cep;
+  if (document.valid) {
+    memory.cpfCnpj = document.formatted;
+    memory.documentType = document.type;
+  }
+  if (birthDate) memory.birthDate = birthDate.toISOString();
+  if (email) memory.email = email;
+  if (billingDay) memory.billingDueDay = billingDay;
+  if ((state === "ASK_NAME" || state === "CORRECTION" || hasExplicitNameMarker(text)) && name) memory.name = name;
+}
+
+function extractNameFromText(text: string) {
+  const withoutKnownData = text
+    .replace(/\b\d{5}-?\d{3}\b/g, " ")
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, " ")
+    .replace(/\b\d{1,2}[\/.\-\s]\d{1,2}[\/.\-\s]\d{2,4}\b/g, " ")
+    .replace(/\b\d[\d.\-/\s]{9,}\d\b/g, " ")
+    .replace(/\b(meu nome e|meu nome é|nome|sou|eu sou)\b/gi, " ")
+    .trim();
+  const words = withoutKnownData.split(/\s+/).filter((word) => /^[A-Za-zÀ-ÿ]{2,}$/.test(word));
+  if (words.length < 2 || words.length > 5) return "";
+  return toTitleCase(words.join(" "));
+}
+
+function hasExplicitNameMarker(text: string) {
+  return /\b(meu nome e|meu nome é|nome|sou|eu sou)\b/i.test(text);
 }
 
 function normalizeText(value: string) {
@@ -1125,13 +1337,13 @@ function looksLikeQuestion(text: string) {
 function promptForState(state: string, firstName?: string) {
   const name = firstName ? `${firstName}, ` : "";
   const prompts: Record<string, string> = {
-    ASK_CEP: "Para eu consultar a cobertura, me envie o CEP da instalação.",
+    ASK_CEP: "Para começar, pode me informar o CEP da instalação, por favor? 📍",
     ASK_STREET_NUMBER: "Me informe o número da residência.",
     ASK_COMPLEMENT: "Agora me informe se há complemento para o endereço.",
     ASK_ADDRESS_CONFIRM: "Agora me informe seu nome completo, por gentileza.",
     ASK_NAME: "Agora me informe seu nome completo, por gentileza.",
-    ASK_DOCUMENT: `${name}agora me informe seu CPF ou CNPJ, por favor.`,
-    ASK_BIRTH_DATE: "Agora me informe sua data de nascimento, por favor.",
+    ASK_DOCUMENT: `${name}me informe seu CPF, por favor.`,
+    ASK_BIRTH_DATE: "Agora me informe sua data de nascimento no formato DD/MM/AAAA, por favor.",
     ASK_BILLING_DUE_DAY: "Qual vencimento você prefere: 5, 8, 10, 15, 20 ou 25?",
     ASK_EMAIL: "Agora preciso do seu e-mail, por favor.",
     CHOOSE_PLAN: "Qual plano você gostaria de escolher?",
@@ -1198,6 +1410,38 @@ function mediaFallbackReply(state: string, firstName?: string) {
     ASK_EMAIL: "Recebi o arquivo, mas não consegui identificar o e-mail com segurança. Pode me enviar digitado, por favor? 😊",
   };
   return replies[state] ?? `Recebi o arquivo, mas não consegui identificar com segurança o dado necessário.\n\n${promptForState(state, firstName)}`;
+}
+
+function parseCorrectionField(text: string): CorrectionField | undefined {
+  const normalized = normalizeText(text);
+  if (normalized === "1" || normalized.includes("nome")) return "name";
+  if (normalized === "2" || normalized.includes("cpf") || normalized.includes("documento")) return "document";
+  if (normalized === "3" || normalized.includes("nascimento") || normalized.includes("data")) return "birthDate";
+  if (normalized === "4" || normalized.includes("email") || normalized.includes("e mail")) return "email";
+  if (normalized === "5" || normalized.includes("endereco") || normalized.includes("cep") || normalized.includes("numero")) return "address";
+  if (normalized === "6" || normalized.includes("vencimento") || normalized.includes("fatura")) return "billing";
+  if (normalized === "7" || normalized.includes("plano")) return "plan";
+  return undefined;
+}
+
+function isCorrectionChoiceOnly(text: string) {
+  const normalized = normalizeText(text);
+  return /^[1-7]$/.test(normalized) || [
+    "nome", "cpf", "documento", "data de nascimento", "nascimento", "email", "e mail", "endereco", "cep", "vencimento", "plano",
+  ].includes(normalized);
+}
+
+function correctionPrompt(field: CorrectionField) {
+  const prompts: Record<CorrectionField, string> = {
+    name: "Certo 😊 Me informe o nome completo correto.",
+    document: "Certo 😊 Me informe o CPF correto.",
+    birthDate: "Certo 😊 Me informe a data de nascimento correta no formato DD/MM/AAAA.",
+    email: "Certo 😊 Me informe o e-mail correto.",
+    address: "Certo 😊 Me informe o endereço correto. Pode enviar CEP, número e complemento.",
+    billing: "Certo 😊 Qual vencimento você prefere: 5, 8, 10, 15, 20 ou 25?",
+    plan: "Certo 😊 Qual plano você quer escolher?",
+  };
+  return prompts[field];
 }
 
 function asksForPlanList(text: string) {
@@ -1276,7 +1520,7 @@ function planOptionDescription(plan: PlanCandidate) {
 
 function interpolate(template: string, memory: ChatMemory, agentName?: string) {
   return template
-    .replaceAll("{{agente}}", agentName || "Joana")
+    .replaceAll("{{agente}}", agentName || "Lily")
     .replaceAll("{{nome}}", getFirstName(memory.name) || "cliente")
     .replaceAll("{{cep}}", formatCep(memory.cep))
     .replaceAll("{{endereco}}", formatFullAddress(memory));
@@ -1294,7 +1538,7 @@ function greetingMessage(agentName?: string) {
   const greeting =
     hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
 
-  return `Olá, ${greeting}! Eu sou a ${agentName ?? "Joana"}!\nConsultora da Claro, para verificar se na sua região tem cobertura, poderia me informar o *CEP da instalação?*`;
+  return `Olá, ${greeting}! 😊 Tudo bem?\nEu sou a ${agentName ?? "Lily"}, consultora de planos de internet fibra. 💙\nTrabalho com planos da Claro, Giga+ e Desktop e vou te ajudar a encontrar a melhor opção para sua casa. 🛜✨\n\nPara começar, pode me informar o CEP da instalação, por favor? 📍`;
 }
 
 function agentConfig(agent: Awaited<ReturnType<ChatbotRepository["getAgentByInstance"]>>) {

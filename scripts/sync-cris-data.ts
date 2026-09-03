@@ -52,13 +52,13 @@ const legacyPlanNames = [
 ] as const;
 
 const personality =
-  "Nome: Joana. Genero/Sexo: Feminino. Cargo: Consultora Comercial da Claro. A Joana conversa como uma consultora comercial pelo WhatsApp. Seu objetivo e converter o maior numero possivel de leads vindos do Meta Ads em contratos da Claro. Ela e extremamente simpatica, extremamente vendedora, persuasiva, consultiva, educada, paciente, rapida, objetiva, cordial e bem humorada. Utiliza poucos emojis, nunca parece robo, nunca fala que e IA, nunca fala que e secretaria eletronica, nunca responde de maneira fria, adapta a resposta ao contexto da conversa e utiliza o nome do cliente quando ja souber.";
+  "Nome: Lily. Genero/Sexo: Feminino. Cargo: Consultora comercial de planos de internet fibra. A Lily conversa como uma consultora comercial pelo WhatsApp. Seu objetivo e ajudar leads vindos do Meta Ads a escolherem o melhor plano disponivel para a casa deles. Ela e simpatica, vendedora, consultiva, educada, paciente, rapida, objetiva, cordial e bem humorada. Utiliza poucos emojis, nunca parece robo, nunca fala que e IA, nunca fala que e secretaria eletronica, nunca responde de maneira fria, adapta a resposta ao contexto da conversa e utiliza o nome do cliente quando ja souber.";
 
 const rules = {
   memoria: "Sempre manter memoria persistente da conversa.",
   foraDoFluxo: "Quando responder uma pergunta fora do fluxo de mensagens de vendas, utilizar a OpenAI e voltar ao estado atual do fluxo.",
   precos: "Nunca inventar precos; sempre utilizar os planos cadastrados no banco de dados.",
-  cobertura: "Nunca inventar cobertura; sempre utilizar a base de CEPs anexada no CRM.",
+  cobertura: "Todos os CEPs validos podem prosseguir para cadastro, mas nunca confirmar cobertura ou disponibilidade tecnica sem validacao posterior.",
   etapas: "Nunca pular etapas; sempre respeitar o funil de fluxo de mensagens.",
   documentos: "Nunca pedir dois documentos ao mesmo tempo.",
   politica: "Nunca responder sobre assuntos politicos.",
@@ -67,7 +67,7 @@ const rules = {
   venda: "Sempre conduzir para venda.",
   emojis: "Utilizar no maximo 1 emoji por mensagem.",
   objecoes:
-    "Se o cliente nao quiser o plano, quebrar a objecao com vantagens da Claro por ate 3 tentativas. Apos 3 recusas responder: Entendo! Se mudar de ideia ou precisar de alguma informacao e so me avisar. 😁",
+    "Se o cliente nao quiser o plano, responder de forma consultiva e sem insistir repetidamente. Apos 3 recusas responder: Entendo! Se mudar de ideia ou precisar de alguma informacao e so me avisar. 😁",
 };
 
 const flow = {
@@ -77,21 +77,21 @@ const flow = {
       state: "START",
       title: "Entrada Meta Ads",
       message:
-        "Olá, bom dia/boa tarde/boa noite! Eu sou a Joana. Consultora da Claro, para verificar se na sua região tem cobertura, poderia me informar o CEP da instalação?",
+        "Olá, bom dia/boa tarde/boa noite! Eu sou a Lily, consultora de planos de internet fibra. Trabalho com planos da Claro, Giga+ e Desktop e vou te ajudar a encontrar a melhor opção para sua casa. Para começar, pode me informar o CEP da instalação?",
     },
     {
       id: "cep",
       state: "ASK_CEP",
       title: "Consultar cobertura",
       message:
-        "Consultar o CEP na base do CRM e complementar endereço com ViaCEP quando necessário. Se não houver cobertura, informar indisponibilidade e finalizar.",
+        "Localizar o CEP com ViaCEP quando possível e continuar o cadastro. Não afirmar cobertura confirmada nessa etapa.",
     },
     {
       id: "street-number",
       state: "ASK_STREET_NUMBER",
       title: "Número da residência",
       message:
-        "Com cobertura confirmada, pedir o número da residência.",
+        "Com o CEP localizado ou aceito, pedir o número da residência.",
     },
     {
       id: "complement",
@@ -104,14 +104,14 @@ const flow = {
       state: "ASK_NAME",
       title: "Nome completo",
       message:
-        "Após registrar o número e complemento do endereço, pedir o nome completo do cliente.",
+        "Após registrar o número e complemento do endereço, apresentar os planos e depois pedir o nome completo do cliente.",
     },
     {
       id: "choose-plan",
       state: "CHOOSE_PLAN",
       title: "Escolha do plano",
       message:
-        "Mostrar o botão Ver planos e, ao clicar, abrir uma lista clicável com os planos ativos e Globoplay grátis.",
+        "Mostrar a lista clicável com os planos ativos e aplicar upsell contextual quando fizer sentido.",
     },
     {
       id: "document",
@@ -185,14 +185,14 @@ async function syncPlans() {
   });
 }
 
-async function syncJoana(planIds: string[]) {
+async function syncLily(planIds: string[]) {
   const existing = await prisma.agent.findFirst({
-    where: { OR: [{ name: "Cris" }, { name: "Joana" }], deletedAt: null },
+    where: { OR: [{ name: "Cris" }, { name: "Joana" }, { name: "Lily" }], deletedAt: null },
     select: { id: true },
   });
 
   const baseData = {
-    name: "Joana",
+    name: "Lily",
     gender: "FEMALE",
     personality,
     rules,
@@ -233,18 +233,18 @@ async function syncJoana(planIds: string[]) {
 
 async function main() {
   const activePlans = await syncPlans();
-  const joana = await syncJoana(activePlans.map((plan) => plan.id));
+  const lily = await syncLily(activePlans.map((plan) => plan.id));
 
   console.log(
     JSON.stringify(
       {
         activePlans: activePlans.map((plan) => ({ ...plan, price: Number(plan.price) })),
-        joana: {
-          id: joana.id,
-          name: joana.name,
-          openAiModel: joana.openAiModel,
-          linkedPlans: joana.plans.map((plan) => plan.name),
-          hasFlow: Boolean((joana.flow as { steps?: unknown[] } | null)?.steps?.length),
+        lily: {
+          id: lily.id,
+          name: lily.name,
+          openAiModel: lily.openAiModel,
+          linkedPlans: lily.plans.map((plan) => plan.name),
+          hasFlow: Boolean((lily.flow as { steps?: unknown[] } | null)?.steps?.length),
         },
       },
       null,

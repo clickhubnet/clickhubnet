@@ -23,18 +23,18 @@ type AgentItem = {
 type Tab = "agents" | "plans" | "openai" | "flow";
 
 const defaultSteps: FlowStep[] = [
-  { id: "start", state: "START", title: "Entrada Meta Ads", message: "Olá, bom dia/boa tarde/boa noite! Eu sou a {{agente}}. Consultora da Claro, para verificar se na sua região tem cobertura, poderia me informar o CEP da instalação?" },
-  { id: "cep", state: "ASK_CEP", title: "Consultar cobertura", message: "Consultar o CEP na base do CRM e complementar endereço com ViaCEP quando necessário. Se não houver cobertura, informar indisponibilidade e finalizar." },
-  { id: "street-number", state: "ASK_STREET_NUMBER", title: "Número da residência", message: "Com cobertura confirmada, pedir o número da residência." },
+  { id: "start", state: "START", title: "Entrada Meta Ads", message: "Olá, bom dia/boa tarde/boa noite! Eu sou a {{agente}}, consultora de planos de internet fibra. Trabalho com planos da Claro, Giga+ e Desktop e vou te ajudar a encontrar a melhor opção para sua casa. Para começar, pode me informar o CEP da instalação?" },
+  { id: "cep", state: "ASK_CEP", title: "Localizar CEP", message: "Localizar o CEP com ViaCEP quando possível e continuar o cadastro. Não afirmar cobertura confirmada nessa etapa." },
+  { id: "street-number", state: "ASK_STREET_NUMBER", title: "Número da residência", message: "Com o CEP localizado ou aceito, pedir o número da residência." },
   { id: "complement", state: "ASK_COMPLEMENT", title: "Complemento", message: "Perguntar se há complemento, como casa, apartamento ou bloco." },
-  { id: "name", state: "ASK_NAME", title: "Nome completo", message: "Após registrar o número e complemento do endereço, pedir o nome completo do cliente." },
-  { id: "choose-plan", state: "CHOOSE_PLAN", title: "Escolha do plano", message: "Mostrar o botão Ver planos e, ao clicar, abrir uma lista clicável com os planos ativos e Globoplay grátis." },
+  { id: "choose-plan", state: "CHOOSE_PLAN", title: "Escolha do plano", message: "Após registrar endereço e complemento, mostrar a lista clicável com os planos ativos e aplicar upsell contextual quando fizer sentido." },
+  { id: "name", state: "ASK_NAME", title: "Nome completo", message: "Após a escolha do plano, pedir o nome completo do cliente se ainda não tiver sido informado." },
   { id: "document", state: "ASK_DOCUMENT", title: "CPF ou CNPJ", message: "Após a escolha do plano, pedir o CPF ou CNPJ e validar o documento." },
   { id: "birth-date", state: "ASK_BIRTH_DATE", title: "Data de nascimento", message: "Com documento válido, pedir a data de nascimento do cliente." },
-  { id: "billing", state: "ASK_BILLING_DUE_DAY", title: "Vencimento", message: "Perguntar o melhor dia para vencimento da fatura: 5, 8, 10, 15, 20 ou 25." },
   { id: "email", state: "ASK_EMAIL", title: "E-mail", message: "Pedir o e-mail para finalizar o cadastro." },
+  { id: "billing", state: "ASK_BILLING_DUE_DAY", title: "Vencimento", message: "Perguntar o melhor dia para vencimento da fatura: 5, 8, 10, 15, 20 ou 25." },
   { id: "confirm", state: "CONFIRM_DATA", title: "Confirmação dos dados", message: "Exibir resumo completo com CEP, nome, documento, nascimento, endereço, e-mail, vencimento e plano. Se estiver correto, criar lead na aba Leads." },
-  { id: "finish", state: "FINISHED", title: "Finalização", message: "Perfeito! 🎉 Seus dados foram confirmados. Vou cadastrar aqui, deixa o celular ligado 📱, porque aprovando você receberá uma ligação da Click Hubnet." },
+  { id: "finish", state: "FINISHED", title: "Finalização", message: "Perfeito! 🎉 Sua solicitação foi registrada com sucesso. Os dados seguirão para análise, validação e verificação de disponibilidade para instalação." },
 ];
 
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });

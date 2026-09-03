@@ -977,7 +977,7 @@ function LeadDetailPanel({
               <section className="rounded-md border p-4">
                 <h3 className="flex items-center gap-2 text-sm font-semibold">
                   <MessageSquareText className="h-4 w-4" aria-hidden="true" />
-                  Conversas da Joana
+                  Conversas da Lily
                 </h3>
                 <div className="mt-3 space-y-3">
                   {lead.conversations.length ? (
@@ -991,7 +991,7 @@ function LeadDetailPanel({
                           {conversation.messages.map((message) => (
                             <div key={message.id} className="rounded-md bg-muted p-2 text-sm">
                               <p className="text-xs uppercase text-muted-foreground">
-                                {message.direction === "inbound" ? "Cliente" : "Joana"} -{" "}
+                                {message.direction === "inbound" ? "Cliente" : "Lily"} -{" "}
                                 {formatDateTime(message.createdAt)}
                               </p>
                               <p className="mt-1 whitespace-pre-wrap">{message.body}</p>

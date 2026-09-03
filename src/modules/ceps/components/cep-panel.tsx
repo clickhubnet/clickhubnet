@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { FileUp, MapPin, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,10 +30,9 @@ type CepOverview = {
   cities: Array<{ city: string | null; state: string | null; count: number }>;
 };
 
-type CepImportJob = {
-  id: string;
+type CepImportProgress = {
   fileName: string;
-  status: "queued" | "running" | "completed" | "failed";
+  status: "running" | "completed" | "failed";
   processed: number;
   total: number;
   imported: number;
@@ -49,31 +48,7 @@ export function CepPanel() {
   const [result, setResult] = useState<CepItem>(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
-  const [importJob, setImportJob] = useState<CepImportJob | null>(null);
-
-  useEffect(() => {
-    if (!importJob || !["queued", "running"].includes(importJob.status)) return;
-
-    const interval = window.setInterval(async () => {
-      const response = await fetch(`/api/ceps/import?jobId=${importJob.id}`);
-      const data = (await response.json()) as ApiResult<CepImportJob>;
-      if (data.status !== "success") {
-        setImportJob((current) => current ? { ...current, status: "failed", message: data.message } : current);
-        return;
-      }
-
-      setImportJob(data.data);
-      if (data.data.status === "completed") {
-        setMessage(data.data.message);
-        await overview.refresh();
-      }
-      if (data.data.status === "failed") {
-        setMessage(data.data.error ?? data.data.message);
-      }
-    }, 1500);
-
-    return () => window.clearInterval(interval);
-  }, [importJob, overview]);
+  const [importJob, setImportJob] = useState<CepImportProgress | null>(null);
 
   async function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -127,15 +102,57 @@ export function CepPanel() {
     setLoading(true);
     const form = event.currentTarget;
     const formData = new FormData(form);
+    const fileName = String((formData.get("file") as File | null)?.name ?? "arquivo");
+    setImportJob({
+      fileName,
+      status: "running",
+      processed: 0,
+      total: 0,
+      imported: 0,
+      progress: 0,
+      message: "Importação iniciada em segundo plano. Preparando arquivo...",
+    });
+    setMessage("Importação iniciada em segundo plano.");
+
     const response = await fetch("/api/ceps/import", { method: "POST", body: formData });
-    const data = (await response.json()) as ApiResult<CepImportJob>;
-    if (data.status === "success") {
-      setImportJob(data.data);
-      setMessage("Importação iniciada em segundo plano.");
-      form.reset();
-    } else {
+    const contentType = response.headers.get("content-type") ?? "";
+
+    if (!response.ok || !response.body || !contentType.includes("application/x-ndjson")) {
+      const data = (await response.json()) as ApiResult<unknown>;
+      setImportJob((current) => current ? { ...current, status: "failed", message: data.message } : current);
       setMessage(data.message);
+      setLoading(false);
+      return;
     }
+
+    form.reset();
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let pendingText = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      pendingText += decoder.decode(value, { stream: true });
+      const lines = pendingText.split("\n");
+      pendingText = lines.pop() ?? "";
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const progress = JSON.parse(line) as CepImportProgress;
+        setImportJob(progress);
+
+        if (progress.status === "completed") {
+          setMessage(progress.message);
+          await overview.refresh();
+        }
+        if (progress.status === "failed") {
+          setMessage(progress.error ?? progress.message);
+        }
+      }
+    }
+
     setLoading(false);
   }
 
@@ -201,7 +218,7 @@ export function CepPanel() {
           <CardContent>
             <form className="flex flex-col gap-3 sm:flex-row" onSubmit={handleImport}>
               <Input accept=".xlsx,.xls,.csv" name="file" required type="file" />
-              <Button disabled={loading || importJob?.status === "queued" || importJob?.status === "running"} type="submit">
+              <Button disabled={loading || importJob?.status === "running"} type="submit">
                 <FileUp className="h-4 w-4" aria-hidden="true" />
                 Importar Cobertura Claro
               </Button>
@@ -248,10 +265,9 @@ export function CepPanel() {
   );
 }
 
-function ImportProgress({ job }: { job: CepImportJob }) {
+function ImportProgress({ job }: { job: CepImportProgress }) {
   const progress = Math.max(0, Math.min(100, job.progress));
   const statusLabel = {
-    queued: "Na fila",
     running: "Importando",
     completed: "Concluído",
     failed: "Erro",

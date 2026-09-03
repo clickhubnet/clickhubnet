@@ -1,35 +1,13 @@
 import { NextResponse } from "next/server";
 import { authErrorResponse } from "@/lib/api-errors";
 import { errorResponse, successResponse } from "@/lib/api-response";
+import { logAudit } from "@/lib/audit";
 import { requireCurrentUser } from "@/lib/auth-context";
 import { assertPermission } from "@/lib/permissions";
 import { permissions } from "@/constants/permissions";
-import { getCepImportJob, startCepImportJob } from "@/modules/ceps/services/cep-import-jobs";
+import { CepImportService } from "@/modules/ceps/services/cep-import.service";
 
-export async function GET(request: Request) {
-  try {
-    const user = await requireCurrentUser();
-    if (user.role !== "ADMIN") throw new Error("FORBIDDEN");
-    assertPermission(user, permissions.cepsImport);
-
-    const url = new URL(request.url);
-    const jobId = url.searchParams.get("jobId");
-    if (!jobId) {
-      return NextResponse.json(errorResponse("Informe o jobId.", "JOB_ID_REQUIRED"), { status: 400 });
-    }
-
-    const job = getCepImportJob(jobId);
-    if (!job) {
-      return NextResponse.json(errorResponse("Importação não encontrada.", "JOB_NOT_FOUND"), { status: 404 });
-    }
-
-    return NextResponse.json(successResponse("Status da importação consultado.", job));
-  } catch (error) {
-    const authError = authErrorResponse(error);
-    if (authError) return authError;
-    return NextResponse.json(errorResponse("Nao foi possivel consultar a importacao."), { status: 500 });
-  }
-}
+export const maxDuration = 300;
 
 export async function POST(request: Request) {
   try {
@@ -47,9 +25,78 @@ export async function POST(request: Request) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const job = startCepImportJob({ buffer, fileName: file.name, userId: user.id });
+    const stream = new TransformStream();
+    const writer = stream.writable.getWriter();
+    const encoder = new TextEncoder();
+    const send = async (data: Record<string, unknown>) => {
+      await writer.write(encoder.encode(`${JSON.stringify(data)}\n`));
+    };
 
-    return NextResponse.json(successResponse("Importação iniciada em segundo plano.", job), { status: 202 });
+    void (async () => {
+      try {
+        const service = new CepImportService();
+        await send({
+          status: "running",
+          progress: 0,
+          processed: 0,
+          total: 0,
+          imported: 0,
+          message: "Importação iniciada em segundo plano. Preparando arquivo...",
+          fileName: file.name,
+        });
+
+        const result = await service.importFromBuffer(buffer, file.name, async (processed, total) => {
+          await send({
+            status: "running",
+            progress: total ? Math.min(99, Math.round((processed / total) * 100)) : 0,
+            processed,
+            total,
+            imported: processed,
+            message: `Importando ${processed.toLocaleString("pt-BR")} de ${total.toLocaleString("pt-BR")} CEPs na Cobertura Claro.`,
+            fileName: file.name,
+          });
+        });
+
+        await logAudit({
+          userId: user.id,
+          action: "IMPORT",
+          module: "ceps",
+          description: `Base Cobertura Claro importada: ${file.name}`,
+          metadata: result,
+        });
+
+        await send({
+          status: "completed",
+          progress: 100,
+          processed: result.totalRows,
+          total: result.totalRows,
+          imported: result.imported,
+          message: `${result.imported.toLocaleString("pt-BR")} CEPs importados para Cobertura Claro com sucesso.`,
+          fileName: file.name,
+        });
+      } catch (error) {
+        await send({
+          status: "failed",
+          progress: 0,
+          processed: 0,
+          total: 0,
+          imported: 0,
+          message: "Não foi possível concluir a importação da Cobertura Claro.",
+          error: error instanceof Error ? error.message : "Erro desconhecido",
+          fileName: file.name,
+        });
+      } finally {
+        await writer.close();
+      }
+    })();
+
+    return new Response(stream.readable, {
+      status: 202,
+      headers: {
+        "Content-Type": "application/x-ndjson; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+      },
+    });
   } catch (error) {
     const authError = authErrorResponse(error);
     if (authError) return authError;

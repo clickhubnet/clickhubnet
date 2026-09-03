@@ -55,12 +55,7 @@ export class OpenAiService {
     const config = await getOpenAiRuntimeConfig();
     if (!config.apiKey) return "";
 
-    const mediaResponse = await fetch(input.url, { signal: AbortSignal.timeout(12_000) });
-    if (!mediaResponse.ok) throw new Error("Não foi possível baixar o áudio recebido.");
-    const declaredSize = Number(mediaResponse.headers.get("content-length") ?? 0);
-    if (declaredSize > 20 * 1024 * 1024) throw new Error("Áudio excede o limite de 20 MB.");
-
-    const bytes = await mediaResponse.arrayBuffer();
+    const bytes = await readAudioBytes(input.url);
     if (bytes.byteLength > 20 * 1024 * 1024) throw new Error("Áudio excede o limite de 20 MB.");
     const mimeType = input.mimeType.split(";")[0] || "audio/ogg";
     const extension = audioExtension(mimeType);
@@ -75,6 +70,28 @@ export class OpenAiService {
 
     return transcription.text.trim();
   }
+}
+
+async function readAudioBytes(value: string) {
+  const normalized = value.trim();
+  const dataUrlMatch = normalized.match(/^data:[^;]+;base64,(.+)$/);
+  if (dataUrlMatch) {
+    return Uint8Array.from(Buffer.from(dataUrlMatch[1], "base64")).buffer;
+  }
+
+  if (/^https?:\/\//i.test(normalized)) {
+    const mediaResponse = await fetch(normalized, { signal: AbortSignal.timeout(12_000) });
+    if (!mediaResponse.ok) throw new Error("Não foi possível baixar o áudio recebido.");
+    const declaredSize = Number(mediaResponse.headers.get("content-length") ?? 0);
+    if (declaredSize > 20 * 1024 * 1024) throw new Error("Áudio excede o limite de 20 MB.");
+    return mediaResponse.arrayBuffer();
+  }
+
+  if (/^[A-Za-z0-9+/=\s]+$/.test(normalized) && normalized.length > 100) {
+    return Uint8Array.from(Buffer.from(normalized.replace(/\s/g, ""), "base64")).buffer;
+  }
+
+  throw new Error("Áudio recebido sem URL ou base64 válido.");
 }
 
 export type ExtractedCustomerData = {

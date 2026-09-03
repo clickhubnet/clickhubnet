@@ -4,6 +4,7 @@ import { errorResponse, successResponse } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { writeTechnicalLog } from "@/lib/logger";
 import { ChatbotEngineService } from "@/modules/chatbot/services/chatbot-engine.service";
+import { OpenAiService } from "@/services/openai/openai.service";
 import {
   extractEvolutionStatusUpdates,
   isEvolutionStatusWebhook,
@@ -12,6 +13,7 @@ import {
 } from "@/services/evolution";
 
 const chatbotEngineService = new ChatbotEngineService();
+const openAiService = new OpenAiService();
 
 export async function handleEvolutionWebhook(request: Request) {
   const rawBody = await request.text();
@@ -60,7 +62,7 @@ export async function handleEvolutionWebhook(request: Request) {
     return NextResponse.json(successResponse("Contato bloqueado ignorado.", { ignored: true, blocked: true }));
   }
 
-  const body = parsed.message || defaultWebhookMessageLabel(parsed.kind);
+  const body = await resolveIncomingMessageBody(parsed);
   try {
     const result = await chatbotEngineService.processIncomingMessage({
       phone: parsed.phone,
@@ -72,6 +74,7 @@ export async function handleEvolutionWebhook(request: Request) {
         mediaUrl: parsed.mediaUrl,
         mimeType: parsed.mimeType,
         fileName: parsed.fileName,
+        transcription: parsed.kind === "audio" ? body : undefined,
         raw: parsed.raw,
       } as Prisma.InputJsonValue,
       instanceId: process.env.EVOLUTION_INSTANCE,
@@ -138,8 +141,40 @@ async function isBlockedConversation(phone: string) {
 
 function defaultWebhookMessageLabel(kind: string) {
   if (kind === "imagem") return "Imagem recebida";
-  if (kind === "audio") return "Audio recebido";
+  if (kind === "audio") return "Áudio recebido";
   if (kind === "video") return "Video recebido";
   if (kind === "documento") return "Documento recebido";
   return "Mensagem recebida";
+}
+
+async function resolveIncomingMessageBody(parsed: ReturnType<typeof parseEvolutionWebhookPayload>) {
+  if (parsed.event !== "message") return "";
+  if (parsed.kind !== "audio") return parsed.message || defaultWebhookMessageLabel(parsed.kind);
+
+  if (!parsed.mediaUrl) {
+    return "[Áudio recebido sem arquivo para transcrição]";
+  }
+
+  try {
+    const transcription = await openAiService.transcribeAudio({
+      url: parsed.mediaUrl,
+      mimeType: parsed.mimeType || "audio/ogg",
+    });
+    return transcription || "[Áudio não pôde ser transcrito]";
+  } catch (error) {
+    await writeTechnicalLog({
+      level: "ERROR",
+      category: "webhook",
+      message: "Falha ao transcrever áudio recebido pela Evolution API.",
+      method: "POST",
+      endpoint: "/api/whatsapp/webhook",
+      integration: "evolution",
+      metadata: {
+        error: error instanceof Error ? error.message : "unknown",
+        mimeType: parsed.mimeType,
+        hasMediaUrl: Boolean(parsed.mediaUrl),
+      },
+    });
+    return "[Áudio não pôde ser transcrito]";
+  }
 }

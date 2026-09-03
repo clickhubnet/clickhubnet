@@ -2,12 +2,16 @@ import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { errorResponse, successResponse } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
+import { writeTechnicalLog } from "@/lib/logger";
+import { ChatbotEngineService } from "@/modules/chatbot/services/chatbot-engine.service";
 import {
   extractEvolutionStatusUpdates,
   isEvolutionStatusWebhook,
   isValidEvolutionWebhook,
   parseEvolutionWebhookPayload,
 } from "@/services/evolution";
+
+const chatbotEngineService = new ChatbotEngineService();
 
 export async function handleEvolutionWebhook(request: Request) {
   const rawBody = await request.text();
@@ -48,20 +52,15 @@ export async function handleEvolutionWebhook(request: Request) {
     return NextResponse.json(successResponse("Presenca processada.", { phone: parsed.phone }));
   }
 
-  const conversation = await findOrCreateWebhookConversation(parsed.phone, parsed.contactName);
-  if (parsed.messageId) {
-    const existing = await prisma.chatMessage.findFirst({ where: { providerId: parsed.messageId }, select: { id: true } });
-    if (existing) {
-      return NextResponse.json(successResponse("Mensagem duplicada ignorada.", { id: existing.id }));
-    }
+  if (parsed.direction === "saida") {
+    return NextResponse.json(successResponse("Mensagem propria ignorada.", { ignored: true }));
   }
 
   const body = parsed.message || defaultWebhookMessageLabel(parsed.kind);
-  const message = await prisma.chatMessage.create({
-    data: {
-      conversationId: conversation.id,
-      direction: parsed.direction === "entrada" ? "inbound" : "outbound",
-      body,
+  try {
+    const result = await chatbotEngineService.processIncomingMessage({
+      phone: parsed.phone,
+      message: body,
       providerId: parsed.messageId,
       rawPayload: {
         provider: "evolution",
@@ -71,10 +70,23 @@ export async function handleEvolutionWebhook(request: Request) {
         fileName: parsed.fileName,
         raw: parsed.raw,
       } as Prisma.InputJsonValue,
-    },
-  });
+      instanceId: process.env.EVOLUTION_INSTANCE,
+      provider: "evolution",
+    });
 
-  return NextResponse.json(successResponse("Webhook processado.", { conversationId: conversation.id, messageId: message.id }));
+    return NextResponse.json(successResponse("Webhook processado.", result));
+  } catch (error) {
+    await writeTechnicalLog({
+      level: "ERROR",
+      category: "webhook",
+      message: "Falha ao processar fluxo da Evolution API.",
+      method: "POST",
+      endpoint: "/api/whatsapp/webhook",
+      integration: "evolution",
+      metadata: { error: error instanceof Error ? error.message : "unknown" },
+    });
+    return NextResponse.json(errorResponse("Nao foi possivel processar o fluxo da Evolution."), { status: 500 });
+  }
 }
 
 export function handleEvolutionWebhookHealth() {
@@ -88,34 +100,6 @@ function parsePayload(rawBody: string) {
   } catch {
     return null;
   }
-}
-
-async function findOrCreateWebhookConversation(phone: string, contactName: string) {
-  const existing = await prisma.chatConversation.findFirst({
-    where: { phone, deletedAt: null },
-    orderBy: { updatedAt: "desc" },
-  });
-  if (existing) {
-    await upsertConversationMemory(phone, {
-      contactName: contactName || undefined,
-      source: "evolution",
-      tags: ["evolution"],
-    });
-    return existing;
-  }
-
-  return prisma.chatConversation.create({
-    data: {
-      phone,
-      state: "EVOLUTION",
-      memory: {
-        contactName: contactName || phone,
-        assignedTo: "Equipe",
-        source: "evolution",
-        tags: ["evolution"],
-      },
-    },
-  });
 }
 
 async function upsertConversationMemory(phone: string, input: Record<string, unknown>) {

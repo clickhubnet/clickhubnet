@@ -3,6 +3,7 @@ import { CepRepository } from "@/repositories/cep.repository";
 import { ChatbotRepository } from "@/repositories/chatbot.repository";
 import { OpenAiService } from "@/services/openai/openai.service";
 import type { ExtractedCustomerData } from "@/services/openai/openai.service";
+import { sendEvolutionTextMessage } from "@/services/evolution";
 import { ZapiService } from "@/services/zapi/zapi.service";
 import { onlyDigits } from "@/utils/mask";
 
@@ -70,6 +71,7 @@ export class ChatbotEngineService {
     rawPayload?: Prisma.InputJsonValue;
     instanceId?: string;
     extractedData?: ExtractedCustomerData;
+    provider?: "zapi" | "evolution";
   }) {
     const phone = normalizeWhatsappPhone(input.phone);
     let alreadyReceived = false;
@@ -110,7 +112,9 @@ export class ChatbotEngineService {
       });
     }
 
-    if (input.providerId) {
+    const provider = input.provider ?? "zapi";
+
+    if (input.providerId && provider === "zapi") {
       await this.zapiService.markAsRead(input.providerId, phone, agentConfig(agent));
     }
 
@@ -135,36 +139,40 @@ export class ChatbotEngineService {
       memory: next.memory as Prisma.InputJsonValue,
       leadId: next.leadId,
     });
-    await this.zapiService.sendText({
-      phone,
-      message: next.reply,
-      delayTypingSeconds: typingEnabled ? delaySeconds : undefined,
-      config: agentConfig(agent),
-    });
-    if (next.interactive?.type === "button-list") {
-      try {
-        await this.zapiService.sendButtonList({
-          phone,
-          message: next.interactive.message,
-          buttons: next.interactive.buttons,
-          config: agentConfig(agent),
-        });
-      } catch {
-        // Fallback keeps the conversational text already sent.
+    if (provider === "evolution") {
+      await sendEvolutionTextMessage({ to: phone, message: next.reply });
+    } else {
+      await this.zapiService.sendText({
+        phone,
+        message: next.reply,
+        delayTypingSeconds: typingEnabled ? delaySeconds : undefined,
+        config: agentConfig(agent),
+      });
+      if (next.interactive?.type === "button-list") {
+        try {
+          await this.zapiService.sendButtonList({
+            phone,
+            message: next.interactive.message,
+            buttons: next.interactive.buttons,
+            config: agentConfig(agent),
+          });
+        } catch {
+          // Fallback keeps the conversational text already sent.
+        }
       }
-    }
-    if (next.interactive?.type === "option-list") {
-      try {
-        await this.zapiService.sendOptionList({
-          phone,
-          title: next.interactive.title,
-          message: next.interactive.message,
-          buttonLabel: next.interactive.buttonLabel,
-          options: next.interactive.options,
-          config: agentConfig(agent),
-        });
-      } catch {
-        // Fallback keeps the conversational text already sent.
+      if (next.interactive?.type === "option-list") {
+        try {
+          await this.zapiService.sendOptionList({
+            phone,
+            title: next.interactive.title,
+            message: next.interactive.message,
+            buttonLabel: next.interactive.buttonLabel,
+            options: next.interactive.options,
+            config: agentConfig(agent),
+          });
+        } catch {
+          // Fallback keeps the conversational text already sent.
+        }
       }
     }
     await this.chatbotRepository.saveMessage({

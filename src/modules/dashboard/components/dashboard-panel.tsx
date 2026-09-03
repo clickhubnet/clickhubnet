@@ -52,12 +52,12 @@ export function DashboardPanel() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 rounded-md border bg-background p-3 md:flex-row md:items-end md:justify-between">
+      <div className="glass-panel neon-ring flex flex-col gap-3 rounded-2xl p-4 md:flex-row md:items-end md:justify-between">
         <div className="grid gap-3 sm:grid-cols-3">
           <label className="space-y-1 text-sm">
             <span className="text-xs text-muted-foreground">Periodo do grafico</span>
             <select
-              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              className="h-10 w-full rounded-xl border border-input bg-[#02142d]/75 px-3 text-sm"
               value={period}
               onChange={(event) => setPeriod(event.target.value)}
             >

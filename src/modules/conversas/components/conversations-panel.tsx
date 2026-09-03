@@ -275,7 +275,7 @@ export function ConversationsPanel() {
                   key={conversation.id}
                   type="button"
                   onClick={() => setActiveId(conversation.id)}
-                  className={`w-full rounded-md border p-3 text-left transition hover:bg-muted ${conversation.id === active?.id ? "border-primary bg-primary/5" : "bg-background"}`}
+                  className={`w-full rounded-xl border p-3 text-left transition hover:bg-blue-500/10 ${conversation.id === active?.id ? "border-primary/70 bg-primary/15" : "border-blue-400/15 bg-blue-500/5"}`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -334,7 +334,7 @@ export function ConversationsPanel() {
                   Este contato está bloqueado. Novas mensagens recebidas desse número serão ignoradas.
                 </div>
               ) : null}
-              <div className="border-b bg-background p-3">
+              <div className="border-b border-blue-400/15 bg-[#02142d]/55 p-3">
                 <form className="flex flex-col gap-2 sm:flex-row" onSubmit={handleCreateTag}>
                   <Input
                     value={newTag}
@@ -353,7 +353,7 @@ export function ConversationsPanel() {
                         key={tag}
                         type="button"
                         onClick={() => void updateActiveTags(activeTags.includes(tag) ? activeTags.filter((item) => item !== tag) : [...activeTags, tag])}
-                        className={`rounded-full border px-2.5 py-1 text-xs font-medium ${activeTags.includes(tag) ? "border-primary bg-primary text-primary-foreground" : "bg-background text-muted-foreground"}`}
+                        className={`rounded-full border px-2.5 py-1 text-xs font-medium ${activeTags.includes(tag) ? "border-primary bg-primary text-primary-foreground" : "border-blue-400/15 bg-blue-500/5 text-muted-foreground"}`}
                       >
                         {tag}
                       </button>
@@ -361,11 +361,11 @@ export function ConversationsPanel() {
                   </div>
                 ) : null}
               </div>
-              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-slate-50 p-4 pr-2">
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[#010b19]/55 p-4 pr-2">
                 {active.messages.length ? (
                   active.messages.map((item) => (
                     <div key={item.id} className={`flex ${item.direction === "outbound" ? "justify-end" : "justify-start"}`}>
-                      <div className={`max-w-[78%] rounded-md px-3 py-2 text-sm shadow-sm ${item.direction === "outbound" ? "bg-primary text-primary-foreground" : "bg-white text-slate-900"}`}>
+                      <div className={`max-w-[78%] rounded-2xl border px-3 py-2 text-sm shadow-sm ${item.direction === "outbound" ? "border-primary/50 bg-primary text-primary-foreground" : "border-blue-400/15 bg-blue-500/10 text-slate-100"}`}>
                         <p className="whitespace-pre-wrap">{item.body}</p>
                         <p className={`mt-1 text-[11px] ${item.direction === "outbound" ? "text-primary-foreground/70" : "text-slate-400"}`}>
                           {formatDate(item.createdAt)}{isPendingLocalMessage(item) ? " · enviando" : ""}{isFailedLocalMessage(item) ? " · falha" : ""}
@@ -374,13 +374,13 @@ export function ConversationsPanel() {
                     </div>
                   ))
                 ) : (
-                  <div className="flex h-full items-center justify-center rounded-md border border-dashed bg-white p-6 text-center text-sm text-muted-foreground">
+                  <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-blue-400/20 bg-blue-500/5 p-6 text-center text-sm text-muted-foreground">
                     Nenhuma mensagem ainda. Envie uma mensagem para iniciar.
                   </div>
                 )}
                 <div ref={messagesEndRef} />
               </div>
-              <form className="border-t bg-background p-4" onSubmit={handleSendMessage}>
+              <form className="border-t border-blue-400/15 bg-[#02142d]/55 p-4" onSubmit={handleSendMessage}>
                 <div className="flex gap-3">
                   <Textarea
                     className="min-h-12 resize-none"
@@ -554,8 +554,8 @@ function getLocalMessageStatus(message: ChatMessage) {
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <div className="w-full max-w-md rounded-md border bg-background shadow-2xl">
-        <div className="flex items-center justify-between border-b px-5 py-4">
+      <div className="glass-panel neon-ring w-full max-w-md rounded-2xl shadow-2xl">
+        <div className="flex items-center justify-between border-b border-blue-400/15 px-5 py-4">
           <h2 className="font-semibold">{title}</h2>
           <Button size="icon" variant="ghost" type="button" onClick={onClose} aria-label="Fechar">
             <X className="h-5 w-5" />

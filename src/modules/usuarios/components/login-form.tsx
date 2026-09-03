@@ -53,7 +53,7 @@ export function LoginForm() {
         <div className="relative">
           <Mail className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" />
           <Input
-            className="pl-9 text-slate-950"
+            className="pl-9"
             name="email"
             placeholder="usuario@clickhubnet.com.br"
             required
@@ -66,7 +66,7 @@ export function LoginForm() {
         <div className="relative">
           <Lock className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" />
           <Input
-            className="pl-9 pr-10 text-slate-950"
+            className="pl-9 pr-10"
             name="password"
             placeholder="Digite sua senha"
             required

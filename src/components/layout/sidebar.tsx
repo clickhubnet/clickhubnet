@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { ChevronDown } from "lucide-react";
+import { usePathname } from "next/navigation";
 import { BrandLogo } from "@/components/layout/brand-logo";
 import { appConfig } from "@/config/app";
 import { navigationItems } from "@/config/navigation";
@@ -8,35 +10,48 @@ import { useCurrentUser } from "@/hooks/use-current-user";
 
 export function Sidebar() {
   const { data: user } = useCurrentUser();
+  const pathname = usePathname();
   const visibleItems = navigationItems.filter(
     (item) => user?.role === "ADMIN" || ("employeeVisible" in item) || (!("adminOnly" in item) && Boolean(user?.permissions?.[item.permission])),
   );
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 border-r border-white/10 bg-[linear-gradient(180deg,#032a66_0%,#083b86_50%,#0e73d8_100%)] text-white md:block">
+    <aside className="fixed inset-y-0 left-0 z-40 hidden w-[19rem] border-r border-blue-400/15 bg-[#020d20]/90 text-white shadow-[18px_0_60px_rgba(0,0,0,0.25)] backdrop-blur-xl md:block">
       <div className="flex h-full flex-col">
-        <div className="flex h-20 items-center gap-3 border-b border-white/10 px-5">
-          <BrandLogo compact priority />
-          <div>
-            <p className="text-sm font-semibold">{appConfig.shortName}</p>
-            <p className="text-xs text-blue-100">{appConfig.tagline}</p>
-          </div>
+        <div className="flex h-24 items-center border-b border-blue-400/15 px-7">
+          <BrandLogo className="h-14 w-56" priority />
         </div>
-        <nav className="flex-1 space-y-1 px-3 py-4">
-          {visibleItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-slate-200 transition-colors hover:bg-white/10 hover:text-white"
-            >
-              <item.icon className="h-4 w-4" aria-hidden="true" />
-              {item.title}
-            </Link>
-          ))}
+        <nav className="flex-1 space-y-3 px-5 py-9">
+          {visibleItems.map((item) => {
+            const active = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`group flex items-center gap-4 rounded-xl border px-4 py-3.5 text-[15px] font-medium transition-all ${
+                  active
+                    ? "border-primary/60 bg-[linear-gradient(135deg,rgba(0,102,255,0.45),rgba(3,25,54,0.7))] text-white shadow-[0_0_28px_rgba(14,115,216,0.22)]"
+                    : "border-transparent text-slate-300 hover:border-blue-400/20 hover:bg-blue-500/10 hover:text-white"
+                }`}
+              >
+                <item.icon className={`h-5 w-5 ${active ? "text-white" : "text-slate-300 group-hover:text-blue-200"}`} aria-hidden="true" />
+                {item.title}
+              </Link>
+            );
+          })}
         </nav>
-        <div className="border-t border-white/10 p-4">
-          <p className="text-xs text-slate-300">{user?.role === "ADMIN" ? "Administrador" : "Operador"}</p>
-          <p className="truncate text-sm font-semibold">{user?.name ?? "Usuario"}</p>
+        <div className="border-t border-blue-400/15 p-6">
+          <div className="flex items-center gap-3 rounded-2xl bg-blue-500/5 p-3">
+            <div className="relative flex h-12 w-12 items-center justify-center rounded-full border border-blue-300/25 bg-primary text-lg font-semibold shadow-[0_0_24px_rgba(14,115,216,0.3)]">
+              {(user?.name ?? "A").slice(0, 1).toUpperCase()}
+              <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-[#020d20] bg-lime-400" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs text-slate-400">{user?.role === "ADMIN" ? "Administrador" : "Operador"}</p>
+              <p className="truncate text-sm font-semibold">{user?.name ?? "Usuario"}</p>
+            </div>
+            <ChevronDown className="h-4 w-4 text-slate-400" />
+          </div>
         </div>
       </div>
     </aside>

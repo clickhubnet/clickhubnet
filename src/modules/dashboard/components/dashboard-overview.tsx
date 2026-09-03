@@ -13,7 +13,7 @@ const statusLabels: Record<string, string> = {
 };
 
 const statusOrder = ["NEW", "CONTACTED", "QUALIFIED", "PROPOSAL", "WON", "LOST"];
-const chartColors = ["#0284c7", "#16a34a", "#f59e0b", "#dc2626", "#7c3aed", "#475569"];
+const chartColors = ["#158cff", "#33d052", "#ffad0a", "#8b35ff", "#25c064", "#ff4f65"];
 
 export type DashboardOverviewData = {
   leadStatuses: Array<{ status: string; count: number }>;
@@ -65,10 +65,10 @@ export function DashboardOverview({ data, loading }: { data: DashboardOverviewDa
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData} margin={{ left: -20, right: 12, top: 8, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="label" tickLine={false} axisLine={false} fontSize={12} />
-                  <YAxis allowDecimals={false} tickLine={false} axisLine={false} fontSize={12} />
-                  <Tooltip cursor={{ fill: "rgba(2,132,199,0.08)" }} />
+                  <CartesianGrid stroke="rgba(148, 163, 184, 0.14)" strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="label" tickLine={false} axisLine={false} fontSize={12} stroke="#94a3b8" />
+                  <YAxis allowDecimals={false} tickLine={false} axisLine={false} fontSize={12} stroke="#94a3b8" />
+                  <Tooltip cursor={{ fill: "rgba(14,115,216,0.12)" }} contentStyle={{ background: "#031936", border: "1px solid rgba(96,165,250,0.2)", borderRadius: 12, color: "#e2e8f0" }} />
                   <Bar dataKey="count" radius={[4, 4, 0, 0]}>
                     {chartData.map((entry, index) => (
                       <Cell key={entry.date} fill={chartColors[index % chartColors.length]} />
@@ -100,7 +100,7 @@ export function DashboardOverview({ data, loading }: { data: DashboardOverviewDa
             </div>
             <div className="grid gap-2 sm:grid-cols-2">
               {funnelData.map((item, index) => (
-                <div key={item.status} className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
+                <div key={item.status} className="flex items-center justify-between rounded-xl border border-blue-400/15 bg-blue-500/5 px-3 py-2 text-sm">
                   <span className="flex items-center gap-2">
                     <span
                       className="h-2.5 w-2.5 rounded-full"
@@ -123,7 +123,7 @@ export function DashboardOverview({ data, loading }: { data: DashboardOverviewDa
             <CardDescription>Ultimas oportunidades cadastradas</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="divide-y rounded-md border">
+            <div className="divide-y divide-blue-400/10 rounded-xl border border-blue-400/15 bg-blue-500/5">
               {loading ? (
                 <p className="p-4 text-sm text-muted-foreground">Carregando</p>
               ) : data?.recentLeads.length ? (
@@ -158,13 +158,13 @@ export function DashboardOverview({ data, loading }: { data: DashboardOverviewDa
           <CardContent className="space-y-3">
             {planData.length ? (
               planData.map((item, index) => (
-                <div key={item.planId ?? item.planName} className="rounded-md border p-3">
+                <div key={item.planId ?? item.planName} className="rounded-xl border border-blue-400/15 bg-blue-500/5 p-3">
                   <div className="flex items-center justify-between text-sm">
                     <span>{item.planName}</span>
                     <span className="font-semibold">{currency.format(item.totalValue)}</span>
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">{item.count} venda(s)</p>
-                  <div className="mt-2 h-2 rounded-full bg-muted">
+                  <div className="mt-2 h-2 rounded-full bg-slate-900/70">
                     <div
                       className="h-2 rounded-full"
                       style={{

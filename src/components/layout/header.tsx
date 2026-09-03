@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect } from "react";
-import { Moon, Sun } from "lucide-react";
+import { Bell, CalendarDays, ChevronDown, Menu, Search } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useRouter } from "next/navigation";
 import { BrandLogo } from "@/components/layout/brand-logo";
 import { appConfig } from "@/config/app";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { clearCurrentUserCache, useCurrentUser } from "@/hooks/use-current-user";
 
 type HeaderProps = {
@@ -14,29 +15,21 @@ type HeaderProps = {
 };
 
 export function Header({ title }: HeaderProps) {
-  const { theme, setTheme } = useTheme();
+  const { setTheme } = useTheme();
   const router = useRouter();
   const currentUser = useCurrentUser();
   const { data: user } = currentUser;
-  const isDark = theme === "dark";
+  const today = new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  }).format(new Date());
 
   useEffect(() => {
-    if (!user) return;
-    setTheme(user.theme === "dark" ? "dark" : "light");
-  }, [setTheme, user?.id, user?.theme]);
-
-  async function toggleTheme() {
-    const nextTheme = isDark ? "light" : "dark";
-    setTheme(nextTheme);
-    document.documentElement.classList.toggle("dark", nextTheme === "dark");
-    document.documentElement.style.colorScheme = nextTheme;
-    await fetch("/api/profile", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ theme: nextTheme }),
-    });
-    await currentUser.refresh();
-  }
+    setTheme("dark");
+    document.documentElement.classList.add("dark");
+    document.documentElement.style.colorScheme = "dark";
+  }, [setTheme]);
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -46,33 +39,39 @@ export function Header({ title }: HeaderProps) {
   }
 
   return (
-    <header className="sticky top-0 z-30 border-b bg-background/95 backdrop-blur">
-      <div className="flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
+    <header className="sticky top-0 z-30 border-b border-blue-400/15 bg-[#020d20]/78 backdrop-blur-xl">
+      <div className="flex h-20 items-center justify-between gap-4 px-4 sm:px-6 lg:px-10">
         <div className="flex min-w-0 items-center gap-3">
           <BrandLogo compact className="h-10 w-10 md:hidden" imageClassName="p-0.5" />
+          <Button className="hidden md:inline-flex" variant="outline" size="icon" type="button" aria-label="Menu">
+            <Menu className="h-5 w-5" />
+          </Button>
           <div className="min-w-0">
-            <h1 className="truncate text-lg font-semibold tracking-normal">{title}</h1>
-            <p className="truncate text-xs text-muted-foreground">{appConfig.name}</p>
+            <h1 className="truncate text-2xl font-semibold tracking-[-0.03em] text-slate-100">{title}</h1>
+            <p className="truncate text-sm text-slate-400">Visão geral do seu negócio</p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <Button
-            variant="outline"
-            size="icon"
-            type="button"
-            aria-label="Alternar tema"
-            title="Alternar tema"
-            onClick={() => void toggleTheme()}
-          >
-            {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="relative hidden w-[260px] xl:block">
+            <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" />
+            <Input className="h-11 pl-9" placeholder="Buscar..." aria-label="Buscar" />
+          </div>
+          <Button variant="outline" size="icon" type="button" aria-label="Notificações" className="relative">
+            <Bell className="h-4 w-4" />
+            <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-bold text-white">3</span>
+          </Button>
+          <Button variant="outline" type="button" className="hidden h-11 px-4 text-slate-300 lg:inline-flex">
+            <CalendarDays className="h-4 w-4" />
+            {today}
+            <ChevronDown className="h-4 w-4" />
           </Button>
           <div className="hidden text-right sm:block">
             <p className="text-sm font-medium">{user?.name ?? "Usuário"}</p>
-            <button className="text-xs text-muted-foreground hover:text-foreground" onClick={logout} type="button">
+            <button className="text-xs text-slate-400 hover:text-white" onClick={logout} type="button">
               Sair
             </button>
           </div>
-          <div className="h-10 w-10 rounded-md bg-primary text-center text-sm font-bold leading-10 text-primary-foreground shadow-sm">
+          <div className="flex h-11 w-11 items-center justify-center rounded-full border border-blue-300/25 bg-primary text-sm font-bold text-primary-foreground shadow-[0_0_24px_rgba(14,115,216,0.35)]">
             {(user?.name ?? "A").slice(0, 1).toUpperCase()}
           </div>
         </div>

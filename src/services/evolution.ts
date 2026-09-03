@@ -136,6 +136,7 @@ export async function checkEvolutionWhatsAppNumber(input: string): Promise<Check
 
 export async function sendEvolutionTextMessage(input: SendEvolutionTextInput) {
   const config = getEvolutionConfig();
+  const delay = resolveTypingDelay(input.delayTypingSeconds);
   const response = await fetch(config.sendTextUrl, {
     method: "POST",
     headers: {
@@ -145,6 +146,7 @@ export async function sendEvolutionTextMessage(input: SendEvolutionTextInput) {
     body: JSON.stringify({
       number: normalizePhone(input.to),
       text: input.message,
+      ...(delay ? { delay } : {}),
     }),
     cache: "no-store",
   });

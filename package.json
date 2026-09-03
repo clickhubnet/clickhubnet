@@ -11,7 +11,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "seed": "npx tsx scripts/seed.ts",
-    "import:ceps": "npx tsx scripts/import-ceps.ts"
+    "import:ceps": "node scripts/import-ceps.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.1.1",

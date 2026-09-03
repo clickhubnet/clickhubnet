@@ -892,10 +892,18 @@ function parseCep(text: string) {
   }
 
   const digits = onlyDigits(text);
-  if (/^\d{8}$/.test(digits)) return digits;
+  const normalizedDigits = normalizeCepDigits(digits);
+  if (normalizedDigits) return normalizedDigits;
 
   const byWords = wordsToDigits(text);
-  return /^\d{8}$/.test(byWords) ? byWords : "";
+  return normalizeCepDigits(byWords);
+}
+
+function normalizeCepDigits(value: string) {
+  const digits = onlyDigits(value);
+  if (/^\d{8}$/.test(digits)) return digits;
+  if (/^\d{7}$/.test(digits)) return `0${digits}`;
+  return "";
 }
 
 function parseDocument(text: string): { valid: false; type?: never; formatted?: never } | { valid: true; type: "CPF" | "CNPJ"; formatted: string } {

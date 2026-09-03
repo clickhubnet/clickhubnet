@@ -257,6 +257,13 @@ export class ChatbotEngineService {
     }
 
     if (shouldAnswerOutsideFlow(text, input.state)) {
+      if (input.state === "ASK_DOCUMENT" && asksWhyCpf(text)) {
+        return {
+          state: input.state,
+          memory,
+          reply: "O CPF é necessário para realizar a análise e o cadastro da contratação. 🔐\nEle faz parte dos dados necessários para encaminharmos sua solicitação.\n\nDepois disso, continuamos normalmente de onde paramos. 😊\nPode me informar seu CPF?",
+        };
+      }
       const answer = await this.answerOutsideFlow({
         message: text,
         state: input.state,
@@ -335,7 +342,7 @@ export class ChatbotEngineService {
       return {
         state: "CHOOSE_PLAN",
         memory,
-        reply: `Perfeito! 😊 Seu endereço ficou:\n📍 ${formatFullAddress(memory)}\n\nAgora vou te apresentar os planos disponíveis para contratação. 🛜🚀\n\n${formatPlanList(plans)}\n\nSe você estiver procurando custo-benefício, eu daria uma atenção especial aos melhores planos disponíveis. 😉\nQual você prefere?\n👉 Pode me responder apenas com o número da opção.`,
+        reply: `Perfeito! 😊 Seu endereço ficou:\n📍 ${formatAddressForPlanIntro(memory)}\n\nAgora vou te apresentar os planos disponíveis para contratação. 🛜🚀\n\n${formatPlanList(plans)}\n${costBenefitHint(plans)}\nQual você prefere?\n👉 Pode me responder apenas com o número da opção.`,
         interactive: buildPlanOptionList(plans),
       };
     }
@@ -589,7 +596,7 @@ export class ChatbotEngineService {
 
     return nextCustomerDataResponse(
       memory,
-      input.prefix ?? `Ótima escolha! 😊🛜\nEntão ficou:\n🚀 ${input.plan.name}\n💰 ${formatMoney(Number(input.plan.price))}/mês\n\nAgora vou iniciar seus dados para seguirmos com a solicitação. ✅\n`,
+      input.prefix ?? selectedPlanMessage(input.plan),
     );
   }
 
@@ -1036,7 +1043,7 @@ function formatMoney(value: number) {
 }
 
 function formatAddressShort(memory: ChatMemory) {
-  const street = memory.address ? `na ${memory.address}` : "no endereço informado";
+  const street = memory.address ? memory.address : "Endereço informado";
   const neighborhood = memory.neighborhood ? `, ${memory.neighborhood}` : "";
   const cityState = memory.city || memory.state ? ` – ${[memory.city, memory.state].filter(Boolean).join("/")}` : "";
   return `${street}${neighborhood}${cityState}`;
@@ -1053,6 +1060,18 @@ function formatFullAddress(memory: ChatMemory) {
   return cityState ? `${base} – ${cityState}` : base;
 }
 
+function formatAddressForPlanIntro(memory: ChatMemory) {
+  const firstLine = [
+    memory.address ?? "Rua não informada",
+    memory.streetNumber ? `nº ${memory.streetNumber}` : "sem número",
+  ].filter(Boolean).join(", ");
+  const secondLine = [
+    memory.neighborhood,
+    memory.city || memory.state ? `${memory.city ?? ""}${memory.city && memory.state ? "/" : ""}${memory.state ?? ""}` : "",
+  ].filter(Boolean).join(" – ");
+  return secondLine ? `${firstLine}\n ${secondLine}` : firstLine;
+}
+
 function buildSummary(memory: ChatMemory) {
   const birthDate = memory.birthDate ? formatDate(new Date(memory.birthDate)) : "Não informado";
   return [
@@ -1064,7 +1083,7 @@ function buildSummary(memory: ChatMemory) {
     "━━━━━━━━━━━━━━━━━━",
     `👤 Nome: ${memory.name ?? "Não informado"}`,
     `🆔 ${memory.documentType ?? "CPF"}: ${memory.cpfCnpj ?? "Não informado"}`,
-    `🎂 Data de nascimento: ${birthDate}`,
+    `🎂 Nascimento: ${birthDate}`,
     `📧 E-mail: ${memory.email ?? "Não informado"}`,
     `📍 CEP: ${formatCep(memory.cep)}`,
     `🏠 Endereço: ${formatFullAddress(memory)}`,
@@ -1075,10 +1094,19 @@ function buildSummary(memory: ChatMemory) {
 
 function formatPlanList(plans: PlanCandidate[]) {
   if (!plans.length) return "No momento não há planos ativos cadastrados.";
+  const numberEmojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣"];
   return [
     "🛜 PLANOS DE INTERNET FIBRA",
-    ...plans.map((plan, index) => `${index + 1}. ${plan.name} — ${formatMoney(Number(plan.price))}/mês`),
+    ...plans.map((plan, index) => `${numberEmojis[index] ?? `${index + 1}.`} ${plan.name} — ${formatMoney(Number(plan.price))}/mês${planListBadge(plan)}`),
   ].join("\n");
+}
+
+function planListBadge(plan: PlanCandidate) {
+  const speed = planSpeedMbps(plan);
+  if (speed === 500) return " ⭐";
+  if (speed === 600) return " 🚀";
+  if (speed >= 1000) return " ⚡";
+  return "";
 }
 
 function buildPlanOptionList(plans: PlanCandidate[]): Extract<InteractivePayload, { type: "option-list" }> {
@@ -1109,32 +1137,45 @@ function findRecommendedPlan(plans: PlanCandidate[]) {
 }
 
 function findUpsellCandidate(selectedPlan: PlanCandidate, plans: PlanCandidate[], memory: ChatMemory) {
-  const selectedPrice = Number(selectedPlan.price);
   const selectedSpeed = planSpeedMbps(selectedPlan);
-  if (!selectedPrice || !selectedSpeed) return null;
+  if (!selectedSpeed) return null;
 
   const declined = new Set(memory.declinedUpsellPlanIds ?? []);
   const offered = new Set(memory.offeredUpsellPlanIds ?? []);
-  return plans
-    .filter((plan) => plan.id !== selectedPlan.id)
-    .filter((plan) => !declined.has(plan.id) && !offered.has(plan.id))
-    .map((plan) => ({ plan, speed: planSpeedMbps(plan), price: Number(plan.price) }))
-    .filter((item) => item.speed > selectedSpeed && item.price > selectedPrice)
-    .map((item) => ({ ...item, difference: item.price - selectedPrice }))
-    .filter((item) => item.difference <= 10)
-    .sort((a, b) => a.difference - b.difference || a.speed - b.speed)[0]?.plan ?? null;
+  const targetSpeed = selectedSpeed === 200 ? 350 : selectedSpeed === 400 ? 500 : 0;
+  if (!targetSpeed) return null;
+
+  return plans.find((plan) => planSpeedMbps(plan) === targetSpeed && !declined.has(plan.id) && !offered.has(plan.id)) ?? null;
 }
 
 function upsellMessage(selectedPlan: PlanCandidate, upsellPlan: PlanCandidate) {
   const difference = Number(upsellPlan.price) - Number(selectedPlan.price);
+  const selectedSpeed = planSpeedMbps(selectedPlan);
+  const upsellSpeed = planSpeedMbps(upsellPlan);
+  const selectedPrice = formatMoney(Number(selectedPlan.price));
+  const upsellPrice = formatMoney(Number(upsellPlan.price));
+
+  if (selectedSpeed === 200 && upsellSpeed === 350) {
+    return [
+      "Antes de continuarmos, tenho uma opção que vale a pena você conhecer. 😊",
+      `Hoje o plano de ${upsellPlan.name} custa ${upsellPrice}/mês, enquanto o de ${selectedPlan.name} custa ${selectedPrice}.`,
+      "Ou seja:",
+      `1️⃣ ${selectedPlan.name} — ${selectedPrice}/mês`,
+      `2️⃣ ${upsellPlan.name} — ${upsellPrice}/mês 🚀`,
+      "Você leva mais velocidade e ainda paga alguns centavos a menos.",
+      `Quer aproveitar os ${upsellPlan.name} por ${upsellPrice} ou prefere continuar com os ${selectedPlan.name}?`,
+    ].join("\n");
+  }
+
   return [
-    "Antes de continuarmos, deixa eu te mostrar uma opção que pode compensar bastante. 😊",
+    "Boa escolha! 😊",
+    "Antes de continuarmos, deixa eu te mostrar uma opção que pode compensar bastante:",
     "",
-    `🔹 ${selectedPlan.name} — ${formatMoney(Number(selectedPlan.price))}/mês`,
-    `⭐ ${upsellPlan.name} — ${formatMoney(Number(upsellPlan.price))}/mês`,
+    `🔹 ${selectedPlan.name} — ${selectedPrice}/mês`,
+    `⭐ ${upsellPlan.name} — ${upsellPrice}/mês`,
     "",
-    `A diferença é de apenas ${formatMoney(difference)} por mês e você leva mais velocidade. 🚀`,
-    `Quer aproveitar o ${upsellPlan.name} por ${formatMoney(Number(upsellPlan.price))}/mês ou prefere continuar com o ${selectedPlan.name}?`,
+    `A diferença é de apenas ${formatMoney(difference)} por mês e você leva mais ${upsellSpeed - selectedSpeed} Mega de velocidade. 🚀`,
+    `Quer manter os ${selectedPlan.name} ou prefere aproveitar os ${upsellPlan.name} por ${upsellPrice}?`,
   ].join("\n");
 }
 
@@ -1155,6 +1196,15 @@ function addressFoundMessage(memory: ChatMemory) {
     "Agora só preciso completar o endereço.",
     "Qual é o número da residência? 🏠",
   ].join("\n");
+}
+
+function costBenefitHint(plans: PlanCandidate[]) {
+  const has500 = plans.some((plan) => planSpeedMbps(plan) === 500);
+  const has600 = plans.some((plan) => planSpeedMbps(plan) === 600);
+  if (has500 && has600) {
+    return "Se você estiver procurando custo-benefício, eu daria uma atenção especial aos planos de 500 e 600 Mega. 😉";
+  }
+  return "Se você estiver procurando custo-benefício, eu daria uma atenção especial aos planos com melhor velocidade pelo menor valor. 😉";
 }
 
 function nextCustomerDataResponse(memory: ChatMemory, prefix = ""): NextBotResponse {
@@ -1205,6 +1255,29 @@ function nextCustomerDataResponse(memory: ChatMemory, prefix = ""): NextBotRespo
   };
 }
 
+function selectedPlanMessage(plan: PlanCandidate) {
+  const speed = planSpeedMbps(plan);
+  const price = formatMoney(Number(plan.price));
+
+  if (speed === 350) {
+    return `Ótima escolha! 😊🛜\nEntão ficou:\n🚀 ${plan.name}\n💰 ${price}/mês\n\nÉ uma ótima opção para quem busca uma boa velocidade sem aumentar o valor mensal.\nAgora vou iniciar seus dados para seguirmos com a solicitação. ✅\n`;
+  }
+
+  if (speed === 500) {
+    return `Ótima escolha! ⭐😊\nVocê escolheu:\n🛜 ${plan.name}\n💰 ${price}/mês\n\nÉ uma das opções com melhor custo-benefício para quem utiliza vários aparelhos conectados no dia a dia. 📱📺💻\nAgora vou iniciar seus dados para seguirmos com a solicitação. ✅\n`;
+  }
+
+  if (speed === 600) {
+    return `Excelente escolha! 🚀\nVocê escolheu:\n🛜 ${plan.name}\n💰 ${price}/mês\n\nUma ótima opção para quem busca bastante velocidade e utiliza vários dispositivos conectados. ⚡\nAgora vou iniciar seus dados para seguirmos com a solicitação. ✅\n`;
+  }
+
+  if (speed >= 1000) {
+    return `Excelente escolha! ⚡🔥\nVocê escolheu:\n🛜 ${plan.name}\n💰 ${price}/mês\n\nÉ a opção para quem procura bastante velocidade e desempenho para vários dispositivos conectados. 🚀\nAgora vou iniciar seus dados para seguirmos com a solicitação. ✅\n`;
+  }
+
+  return `Ótima escolha! 😊🛜\nEntão ficou:\n🚀 ${plan.name}\n💰 ${price}/mês\n\nAgora vou iniciar seus dados para seguirmos com a solicitação. ✅\n`;
+}
+
 function selectPlan(text: string, plans: PlanCandidate[]) {
   const normalized = normalizeText(text);
 
@@ -1221,11 +1294,11 @@ function selectPlan(text: string, plans: PlanCandidate[]) {
   if (byName) return byName;
 
   const aliases = [
-    { terms: ["250", "duzentos e cinquenta"], chip: true },
+    { terms: ["200", "duzentos"], chip: false },
     { terms: ["350", "trezentos e cinquenta"], chip: false },
-    { terms: ["500", "quinhentos"], chip: true },
+    { terms: ["400", "quatrocentos"], chip: false },
     { terms: ["500", "quinhentos"], chip: false },
-    { terms: ["1gb", "1 giga", "um giga", "1000"], chip: true },
+    { terms: ["600", "seiscentos"], chip: false },
     { terms: ["1gb", "1 giga", "um giga", "1000"], chip: false },
   ];
   const wantsChip = normalized.includes("chip") || normalized.includes("celular") || normalized.includes("35gb");
@@ -1332,6 +1405,11 @@ function shouldAnswerOutsideFlow(text: string, state: string) {
 function looksLikeQuestion(text: string) {
   const normalized = normalizeText(text);
   return text.includes("?") || /^(como|qual|quais|quanto|quando|onde|por que|porque|tem|voce|voces|pode|posso)\b/.test(normalized);
+}
+
+function asksWhyCpf(text: string) {
+  const normalized = normalizeText(text);
+  return normalized.includes("cpf") && /por que|porque|pra que|para que|precisa/.test(normalized);
 }
 
 function promptForState(state: string, firstName?: string) {
@@ -1503,11 +1581,12 @@ function limitText(value: string, maxLength: number) {
 
 function planOptionTitle(plan: PlanCandidate) {
   const normalized = normalizeText(plan.name);
-  if (normalized.includes("250 mega")) return "250 MEGA + Chip";
-  if (normalized.includes("350 mega")) return "350 MEGA";
-  if (normalized.includes("500 mega")) return "500 MEGA + Chip";
-  if (normalized.includes("1 giga") && normalized.includes("chip")) return "1 GIGA + Chip";
-  if (normalized.includes("1 giga")) return "1 GIGA";
+  if (normalized.includes("200 mega")) return "200 Mega";
+  if (normalized.includes("350 mega")) return "350 Mega";
+  if (normalized.includes("400 mega")) return "400 Mega";
+  if (normalized.includes("500 mega")) return "500 Mega";
+  if (normalized.includes("600 mega")) return "600 Mega";
+  if (normalized.includes("1 giga")) return "1 Giga";
   return plan.name;
 }
 
@@ -1536,7 +1615,7 @@ function greetingMessage(agentName?: string) {
   );
 
   const greeting =
-    hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
+    hour < 12 ? "bom dia" : hour < 18 ? "boa tarde" : "boa noite";
 
   return `Olá, ${greeting}! 😊 Tudo bem?\nEu sou a ${agentName ?? "Lily"}, consultora de planos de internet fibra. 💙\nTrabalho com planos da Claro, Giga+ e Desktop e vou te ajudar a encontrar a melhor opção para sua casa. 🛜✨\n\nPara começar, pode me informar o CEP da instalação, por favor? 📍`;
 }

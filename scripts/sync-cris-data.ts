@@ -2,39 +2,46 @@ import { prisma } from "@/lib/prisma";
 
 const plans = [
   {
-    name: "250 MEGA - Internet + Chip 35GB (Grátis)",
-    speed: "250 Mega",
-    price: 119.8,
-    description: "Internet + Chip 35GB (Grátis) + Globoplay (GRÁTIS)",
+    name: "200 Mega",
+    speed: "200 Mega",
+    price: 89.99,
+    description: "Internet fibra",
     order: 1,
   },
   {
-    name: "350 MEGA - Internet",
+    name: "350 Mega",
     speed: "350 Mega",
-    price: 99.9,
-    description: "Internet + Globoplay (GRÁTIS)",
+    price: 89.9,
+    description: "Internet fibra",
     order: 2,
   },
   {
-    name: "500 MEGA - Internet + Chip 35GB (Grátis)",
-    speed: "500 Mega",
-    price: 139.8,
-    description: "Internet + Chip 35GB (Grátis) + Globoplay (GRÁTIS)",
+    name: "400 Mega",
+    speed: "400 Mega",
+    price: 94.99,
+    description: "Internet fibra",
     order: 3,
   },
   {
-    name: "1 GIGA - Internet + Chip 35GB (Grátis)",
-    speed: "1 Giga",
-    price: 189.8,
-    description: "Internet + Chip 35GB (Grátis) + Globoplay (GRÁTIS)",
+    name: "500 Mega",
+    speed: "500 Mega",
+    price: 99.9,
+    description: "Internet fibra",
     order: 4,
   },
   {
-    name: "1 GIGA - Internet",
-    speed: "1 Giga",
-    price: 199.9,
-    description: "Internet + Globoplay (GRÁTIS)",
+    name: "600 Mega",
+    speed: "600 Mega",
+    price: 109.9,
+    description: "Internet fibra",
     order: 5,
+  },
+  {
+    name: "1 Giga",
+    speed: "1 Giga",
+    price: 179.9,
+    description: "Internet fibra",
+    order: 6,
   },
 ] as const;
 
@@ -49,6 +56,11 @@ const legacyPlanNames = [
   "Plano 250Mb + Chip",
   "Combo Hexa - 600 (Wi-Fi 600Mb + 35Gb celular)",
   "Plano 1Gb + Chip",
+  "250 MEGA - Internet + Chip 35GB (Grátis)",
+  "350 MEGA - Internet",
+  "500 MEGA - Internet + Chip 35GB (Grátis)",
+  "1 GIGA - Internet + Chip 35GB (Grátis)",
+  "1 GIGA - Internet",
 ] as const;
 
 const personality =

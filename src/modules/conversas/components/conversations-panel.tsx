@@ -204,8 +204,8 @@ export function ConversationsPanel() {
   }
 
   return (
-    <div className="grid min-h-[calc(100vh-8rem)] gap-4 lg:grid-cols-[360px_1fr]">
-      <Card className="overflow-hidden">
+    <div className="grid h-[calc(100vh-8rem)] min-h-[36rem] gap-4 overflow-hidden lg:grid-cols-[360px_1fr]">
+      <Card className="flex min-h-0 flex-col overflow-hidden">
         <CardHeader className="border-b">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -219,7 +219,7 @@ export function ConversationsPanel() {
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="space-y-4 p-4">
+        <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-4">
           <form className="space-y-3 rounded-md border bg-muted/30 p-3" onSubmit={handleCreateConversation}>
             <div className="flex items-center gap-2 text-sm font-medium">
               <Plus className="h-4 w-4" />
@@ -241,7 +241,7 @@ export function ConversationsPanel() {
 
           {error ? <p className="rounded-md bg-red-500/10 p-3 text-sm text-red-600">{error}</p> : null}
 
-          <div className="space-y-2">
+          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
             {loading ? (
               <p className="text-sm text-muted-foreground">Carregando conversas</p>
             ) : conversations.length ? (
@@ -323,7 +323,7 @@ export function ConversationsPanel() {
                   </div>
                 ) : null}
               </div>
-              <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-4">
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-slate-50 p-4 pr-2">
                 {active.messages.length ? (
                   active.messages.map((item) => (
                     <div key={item.id} className={`flex ${item.direction === "outbound" ? "justify-end" : "justify-start"}`}>

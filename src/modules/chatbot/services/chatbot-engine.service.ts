@@ -1328,9 +1328,9 @@ function selectPlan(text: string, plans: PlanCandidate[]) {
 }
 
 function applyParsedCustomerData(memory: ChatMemory, text: string, state: string) {
-  const cep = parseCep(text);
   const document = parseDocument(text);
   const birthDate = parseBirthDate(text);
+  const cep = shouldParseCepForState(text, state, birthDate) ? parseCep(text) : "";
   const email = parseEmail(text);
   const billingDay = state === "ASK_BILLING_DUE_DAY" || state === "CORRECTION" ? parseBillingDay(text) : null;
   const name = extractNameFromText(text);
@@ -1344,6 +1344,16 @@ function applyParsedCustomerData(memory: ChatMemory, text: string, state: string
   if (email) memory.email = email;
   if (billingDay) memory.billingDueDay = billingDay;
   if ((state === "ASK_NAME" || state === "CORRECTION" || hasExplicitNameMarker(text)) && name) memory.name = name;
+}
+
+function shouldParseCepForState(text: string, state: string, birthDate: Date | null) {
+  if (birthDate) return false;
+  if (state === "ASK_CEP" || state === "ASK_ADDRESS_CONFIRM") return true;
+  if (state === "CORRECTION") {
+    const normalized = normalizeText(text);
+    return /\bcep\b|endere[cç]o|logradouro|rua|avenida|av\b/.test(normalized);
+  }
+  return false;
 }
 
 function extractNameFromText(text: string) {

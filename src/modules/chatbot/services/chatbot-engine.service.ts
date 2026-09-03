@@ -18,7 +18,17 @@ export class ChatbotEngineService {
   ) {}
 
   async validateCoverage(cep: string) {
-    return this.cepRepository.findByCep(cep);
+    const coverage = await this.cepRepository.findByCep(cep);
+    if (coverage) return coverage;
+
+    return {
+      cep,
+      available: true,
+      street: null,
+      neighborhood: null,
+      city: null,
+      state: null,
+    };
   }
 
   async handleIncomingCall(input: {

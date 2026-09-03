@@ -356,9 +356,9 @@ export function ConversationsPanel() {
                 {active.messages.length ? (
                   active.messages.map((item) => (
                     <div key={item.id} className={`flex ${item.direction === "outbound" ? "justify-end" : "justify-start"}`}>
-                      <div className={`max-w-[78%] rounded-2xl border px-3 py-2 text-sm shadow-sm ${item.direction === "outbound" ? "border-primary/50 bg-primary text-primary-foreground" : "border-blue-400/15 bg-blue-500/10 text-slate-100"}`}>
+                      <div className={`max-w-[78%] rounded-2xl border px-3 py-2 text-sm shadow-sm ${item.direction === "outbound" ? "border-blue-500/45 bg-[#0757b8] text-white" : "border-blue-400/15 bg-blue-500/10 text-slate-100"}`}>
                         <p className="whitespace-pre-wrap">{item.body}</p>
-                        <p className={`mt-1 text-[11px] ${item.direction === "outbound" ? "text-primary-foreground/70" : "text-slate-400"}`}>
+                        <p className={`mt-1 text-[11px] ${item.direction === "outbound" ? "text-blue-100/75" : "text-slate-400"}`}>
                           {formatDate(item.createdAt)}{isPendingLocalMessage(item) ? " · enviando" : ""}{isFailedLocalMessage(item) ? " · falha" : ""}
                         </p>
                       </div>

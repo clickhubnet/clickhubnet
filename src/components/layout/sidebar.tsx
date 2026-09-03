@@ -48,8 +48,16 @@ export function Sidebar() {
           })}
         </nav>
         <div className="border-t border-blue-400/15 p-6">
-          <p className="text-xs text-slate-400">{user?.role === "ADMIN" ? "Administrador" : "Operador"}</p>
-          <p className="mt-1 truncate text-sm font-semibold text-white">{user?.name ?? "Usuario"}</p>
+          <div className="flex items-center gap-3">
+            <div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-blue-300/25 bg-primary text-lg font-semibold text-white shadow-[0_0_24px_rgba(14,115,216,0.3)]">
+              {(user?.name ?? "A").slice(0, 1).toUpperCase()}
+              <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-[#020d20] bg-lime-400" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-slate-400">{user?.role === "ADMIN" ? "Administrador" : "Operador"}</p>
+              <p className="mt-1 truncate text-sm font-semibold text-white">{user?.name ?? "Usuario"}</p>
+            </div>
+          </div>
           <button
             className="mt-4 flex w-full items-center justify-center gap-2 rounded-[8px] border border-blue-400/20 bg-blue-500/10 px-3 py-2.5 text-sm font-medium text-slate-200 transition hover:border-primary/50 hover:bg-primary/15 hover:text-white"
             onClick={() => void logout()}

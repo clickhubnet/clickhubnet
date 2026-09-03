@@ -38,7 +38,7 @@ export function DashboardPanel() {
 
   return (
     <div className="space-y-4">
-      <div className="-mt-[74px] mb-[22px] flex flex-col items-end gap-3">
+      <div className="mb-[22px] flex flex-col items-end gap-3">
         <div className="flex gap-2">
           <select
             className="h-10 w-[118px] rounded-[8px] border border-[#0d376d] bg-[#031936]/80 px-3 text-sm text-[#c6d1e6]"

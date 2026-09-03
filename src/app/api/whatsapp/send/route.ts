@@ -43,7 +43,7 @@ export async function POST(request: Request) {
             fileName: body.fileName,
             mimeType: body.mimeType,
           })
-        : await sendEvolutionTextMessage({ to: destinationPhone, message: body.message as string });
+        : await sendEvolutionTextMessage({ to: destinationPhone, message: body.message as string, delayTypingSeconds: 2 });
 
     const providerId = resolveEvolutionMessageId(result);
     const conversation = await findOrCreateConversation({

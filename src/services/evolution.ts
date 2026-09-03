@@ -1,11 +1,14 @@
 import "server-only";
 
 import { Buffer } from "node:buffer";
+import type { Prisma } from "@prisma/client";
+import { writeTechnicalLog } from "@/lib/logger";
 import { isValidBrazilianWhatsApp, normalizePhone as normalizeBrazilianPhone } from "@/services/validators";
 
 type SendEvolutionTextInput = {
   to: string;
   message: string;
+  delayTypingSeconds?: number;
 };
 
 type SendEvolutionAudioInput = {
@@ -60,6 +63,11 @@ function trimTrailingSlash(value: string) {
   return value.replace(/\/+$/, "");
 }
 
+function resolveTypingDelay(delayTypingSeconds?: number) {
+  if (!delayTypingSeconds) return 0;
+  return Math.min(15_000, Math.max(1_000, Math.round(delayTypingSeconds * 1000)));
+}
+
 async function parseApiResponse(response: Response) {
   const text = await response.text();
   try {
@@ -90,6 +98,8 @@ export function getEvolutionConfig() {
     sendTextUrl: `${baseUrl}/message/sendText/${encodedInstanceName}`,
     sendAudioUrl: `${baseUrl}/message/sendWhatsAppAudio/${encodedInstanceName}`,
     sendMediaUrl: `${baseUrl}/message/sendMedia/${encodedInstanceName}`,
+    markReadUrl: `${baseUrl}/message/markread`,
+    chatPresenceUrl: `${baseUrl}/message/presence`,
   };
 }
 
@@ -126,6 +136,7 @@ export async function checkEvolutionWhatsAppNumber(input: string): Promise<Check
 
 export async function sendEvolutionTextMessage(input: SendEvolutionTextInput) {
   const config = getEvolutionConfig();
+  const delay = resolveTypingDelay(input.delayTypingSeconds);
   const response = await fetch(config.sendTextUrl, {
     method: "POST",
     headers: {
@@ -135,6 +146,18 @@ export async function sendEvolutionTextMessage(input: SendEvolutionTextInput) {
     body: JSON.stringify({
       number: normalizePhone(input.to),
       text: input.message,
+      textMessage: {
+        text: input.message,
+      },
+      ...(delay
+        ? {
+            delay,
+            options: {
+              delay,
+              presence: "composing",
+            },
+          }
+        : {}),
     }),
     cache: "no-store",
   });
@@ -145,6 +168,95 @@ export async function sendEvolutionTextMessage(input: SendEvolutionTextInput) {
   }
 
   return result;
+}
+
+export async function markEvolutionMessageAsRead(input: { phone: string; messageId: string }) {
+  const config = getEvolutionConfig();
+  try {
+    const response = await fetch(config.markReadUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: config.apiKey,
+      },
+      body: JSON.stringify({
+        number: normalizePhone(input.phone),
+        id: [input.messageId],
+      }),
+      cache: "no-store",
+    });
+
+    if (response.ok) return true;
+    const result = await parseApiResponse(response);
+    await writeTechnicalLog({
+      level: "ERROR",
+      category: "integration",
+      message: "Evolution API recusou marcar mensagem como lida.",
+      method: "POST",
+      endpoint: "/message/markread",
+      statusCode: response.status,
+      integration: "evolution",
+      metadata: { response: normalizeJsonForLog(result) },
+    });
+  } catch (error) {
+    await writeTechnicalLog({
+      level: "ERROR",
+      category: "integration",
+      message: "Falha ao marcar mensagem como lida na Evolution API.",
+      method: "POST",
+      endpoint: "/message/markread",
+      integration: "evolution",
+      metadata: { error: error instanceof Error ? error.message : "unknown" },
+    });
+  }
+  return false;
+}
+
+export async function setEvolutionChatPresence(input: {
+  phone: string;
+  state: "composing" | "paused" | "recording" | "available" | "unavailable";
+  isAudio?: boolean;
+}) {
+  const config = getEvolutionConfig();
+  try {
+    const response = await fetch(config.chatPresenceUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: config.apiKey,
+      },
+      body: JSON.stringify({
+        number: normalizePhone(input.phone),
+        state: input.state,
+        isAudio: input.isAudio ?? false,
+      }),
+      cache: "no-store",
+    });
+
+    if (response.ok) return true;
+    const result = await parseApiResponse(response);
+    await writeTechnicalLog({
+      level: "ERROR",
+      category: "integration",
+      message: "Evolution API recusou atualizar presenca no chat.",
+      method: "POST",
+      endpoint: "/message/presence",
+      statusCode: response.status,
+      integration: "evolution",
+      metadata: { response: normalizeJsonForLog(result) },
+    });
+  } catch (error) {
+    await writeTechnicalLog({
+      level: "ERROR",
+      category: "integration",
+      message: "Falha ao atualizar presenca no chat pela Evolution API.",
+      method: "POST",
+      endpoint: "/message/presence",
+      integration: "evolution",
+      metadata: { error: error instanceof Error ? error.message : "unknown" },
+    });
+  }
+  return false;
 }
 
 export async function sendEvolutionAudioMessage(input: SendEvolutionAudioInput) {
@@ -276,6 +388,10 @@ function resolveAudioFileName(mimeType: string) {
 function formatEvolutionError(result: unknown, fallbackMessage: string) {
   if (typeof result === "object" && result) return JSON.stringify(result);
   return fallbackMessage;
+}
+
+function normalizeJsonForLog(value: unknown) {
+  return JSON.parse(JSON.stringify(value ?? null)) as Prisma.InputJsonValue;
 }
 
 function parseWhatsappNumberCheck(result: unknown, fallbackPhone: string): CheckEvolutionWhatsAppResult {

@@ -6,6 +6,15 @@ export type DashboardFilters = {
   to?: Date;
 };
 
+const dashboardKanbanStatusOrder = [
+  LeadStatus.NEW,
+  LeadStatus.QUALIFIED,
+  LeadStatus.CONTACTED,
+  LeadStatus.PROPOSAL,
+  LeadStatus.WON,
+  LeadStatus.LOST,
+];
+
 export class DashboardRepository {
   async getMetrics(filters: DashboardFilters = {}, user?: Pick<User, "id" | "role">) {
     const chartDateFilter = buildDateFilter(filters);
@@ -15,7 +24,7 @@ export class DashboardRepository {
     const wonWhere: Prisma.LeadWhereInput = { deletedAt: null, status: LeadStatus.WON, ...buildWonAccessWhere(user) };
     const visibleLeadWhere: Prisma.LeadWhereInput = { deletedAt: null, ...accessWhere };
 
-    const [newLeads, totalLeads, conversations, appointments, expenses, leadStatuses, wonLeadRows, chartLeads, recentLeads] =
+    const [newLeads, totalLeads, conversations, appointments, expenses, leadStatuses, wonLeadRows, chartLeads, recentLeads, kanbanPreview] =
       await Promise.all([
       prisma.lead.count({ where: { deletedAt: null, createdAt: todayFilter, ...accessWhere } }),
       prisma.lead.count({ where: visibleLeadWhere }),
@@ -42,6 +51,23 @@ export class DashboardRepository {
         take: 6,
         include: { plan: true, assignedUser: true },
       }),
+      Promise.all(dashboardKanbanStatusOrder.map(async (status) => {
+        const leads = await prisma.lead.findMany({
+          where: { ...visibleLeadWhere, status },
+          orderBy: { updatedAt: "desc" },
+          take: 3,
+          include: { plan: true },
+        });
+        return {
+          status,
+          leads: leads.map((lead) => ({
+            id: lead.id,
+            name: lead.name,
+            planName: lead.planName ?? lead.plan?.name ?? lead.notes ?? "Sem interesse",
+            updatedAt: lead.updatedAt.toISOString(),
+          })),
+        };
+      })),
     ]);
 
     const wonValue = wonLeadRows.reduce((sum, lead) => sum + getLeadValue(lead), 0);
@@ -75,6 +101,7 @@ export class DashboardRepository {
         status: item.status,
         count: item._count.status,
       })),
+      kanbanPreview,
       leadChart: buildLeadChart(chartLeads, filters),
       planSales: planSales.sort((a, b) => b.totalValue - a.totalValue),
       recentLeads: recentLeads.map((lead) => ({

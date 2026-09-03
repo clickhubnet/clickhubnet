@@ -1,6 +1,6 @@
 "use client";
 
-import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 const statusLabels: Record<string, string> = {
@@ -13,7 +13,6 @@ const statusLabels: Record<string, string> = {
 };
 
 const statusOrder = ["NEW", "QUALIFIED", "CONTACTED", "PROPOSAL", "WON", "LOST"];
-const chartColors = ["#158cff", "#33d052", "#ffad0a", "#8b35ff", "#25c064", "#ff4f65"];
 const kanbanColors: Record<string, { border: string; link: string; icon: string }> = {
   NEW: { border: "#1684ff", link: "#1684ff", icon: "" },
   QUALIFIED: { border: "#33d052", link: "#39ff45", icon: "" },
@@ -34,8 +33,11 @@ export type DashboardOverviewData = {
       updatedAt: string;
     }>;
   }>;
-  leadChart: Array<{ date: string; label: string; count: number }>;
+  performanceChart?: Array<{ date: string; label: string; leads: number; conversations: number }>;
+  leadChart?: Array<{ date: string; label: string; count: number }>;
   planSales: Array<{ planId: string | null; planName: string; count: number; totalValue: number }>;
+  wonLeads?: number;
+  totalValue?: number;
   recentLeads: Array<{
     id: string;
     name: string;
@@ -55,6 +57,8 @@ const currency = new Intl.NumberFormat("pt-BR", {
   currency: "BRL",
 });
 
+const integer = new Intl.NumberFormat("pt-BR");
+
 export function DashboardOverview({ data, loading }: { data: DashboardOverviewData | null; loading: boolean }) {
   const funnelData = statusOrder.map((status) => ({
     status,
@@ -62,8 +66,16 @@ export function DashboardOverview({ data, loading }: { data: DashboardOverviewDa
     count: data?.leadStatuses.find((item) => item.status === status)?.count ?? 0,
   }));
 
-  const chartData = data?.leadChart ?? [];
+  const performanceData = data?.performanceChart ?? data?.leadChart?.map((item) => ({
+    date: item.date,
+    label: item.label,
+    leads: item.count,
+    conversations: 0,
+  })) ?? [];
   const planData = data?.planSales ?? [];
+  const totalSales = data?.wonLeads ?? planData.reduce((sum, item) => sum + item.count, 0);
+  const totalRevenue = data?.totalValue ?? planData.reduce((sum, item) => sum + item.totalValue, 0);
+  const averageTicket = totalSales ? totalRevenue / totalSales : 0;
 
   return (
     <div className="mt-5 space-y-4">
@@ -86,107 +98,57 @@ export function DashboardOverview({ data, loading }: { data: DashboardOverviewDa
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle>Leads por Periodo</CardTitle>
-            <CardDescription>Entradas de leads no intervalo selecionado</CardDescription>
+      <div className="grid gap-4 xl:grid-cols-[1.55fr_1fr_1fr]">
+        <Card className="rounded-[10px] border-[#0c3569] bg-[linear-gradient(180deg,rgba(3,26,59,0.98),rgba(2,23,52,0.98))]">
+          <CardHeader className="flex-row items-center justify-between p-[18px] pb-[10px]">
+            <div>
+              <CardTitle className="text-[16px] font-medium text-white">Desempenho geral</CardTitle>
+              <div className="mt-[18px] flex items-center gap-6 text-[12px] text-[#9aa8c2]">
+                <span className="flex items-center gap-2"><span className="h-[4px] w-[16px] rounded-full bg-[#1684ff]" />Leads</span>
+                <span className="flex items-center gap-2"><span className="h-[4px] w-[16px] rounded-full bg-[#33d052]" />Conversas</span>
+              </div>
+            </div>
+            <button className="rounded-[6px] border border-blue-400/15 bg-blue-500/5 px-3 py-2 text-[12px] text-[#9aa8c2]" type="button">
+              Últimos 7 dias⌄
+            </button>
           </CardHeader>
-          <CardContent>
-            <div className="h-72">
+          <CardContent className="px-[18px] pb-[16px] pt-0">
+            <div className="h-[205px]">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} margin={{ left: -20, right: 12, top: 8, bottom: 0 }}>
-                  <CartesianGrid stroke="rgba(148, 163, 184, 0.14)" strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="label" tickLine={false} axisLine={false} fontSize={12} stroke="#94a3b8" />
-                  <YAxis allowDecimals={false} tickLine={false} axisLine={false} fontSize={12} stroke="#94a3b8" />
-                  <Tooltip cursor={{ fill: "rgba(14,115,216,0.12)" }} contentStyle={{ background: "#031936", border: "1px solid rgba(96,165,250,0.2)", borderRadius: 12, color: "#e2e8f0" }} />
-                  <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                    {chartData.map((entry, index) => (
-                      <Cell key={entry.date} fill={chartColors[index % chartColors.length]} />
-                    ))}
-                  </Bar>
-                </BarChart>
+                <LineChart data={performanceData} margin={{ left: -18, right: 8, top: 14, bottom: 0 }}>
+                  <CartesianGrid stroke="rgba(148, 163, 184, 0.10)" strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="label" tickLine={false} axisLine={false} fontSize={11} stroke="#7f8da8" />
+                  <YAxis allowDecimals={false} tickLine={false} axisLine={false} fontSize={11} stroke="#7f8da8" />
+                  <Tooltip contentStyle={{ background: "#031936", border: "1px solid rgba(96,165,250,0.2)", borderRadius: 12, color: "#e2e8f0" }} />
+                  <Line dataKey="leads" name="Leads" type="monotone" stroke="#1684ff" strokeWidth={2.2} dot={{ r: 3, fill: "#1684ff" }} activeDot={{ r: 4 }} />
+                  <Line dataKey="conversations" name="Conversas" type="monotone" stroke="#33d052" strokeWidth={2.2} dot={{ r: 3, fill: "#33d052" }} activeDot={{ r: 4 }} />
+                </LineChart>
               </ResponsiveContainer>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="rounded-[10px] border-[#0c3569] bg-[linear-gradient(180deg,rgba(3,26,59,0.98),rgba(2,23,52,0.98))]">
           <CardHeader>
             <CardTitle>Resumo de vendas</CardTitle>
-            <CardDescription>Principais planos fechados</CardDescription>
+            <CardDescription>Indicadores comerciais fechados</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {planData.slice(0, 4).length ? (
-              planData.slice(0, 4).map((item, index) => (
-                <div key={item.planId ?? item.planName} className="rounded-xl border border-blue-400/15 bg-blue-500/5 p-3">
-                  <div className="flex items-center justify-between text-sm">
-                    <span>{item.planName}</span>
-                    <span className="font-semibold">{currency.format(item.totalValue)}</span>
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground">{item.count} venda(s)</p>
-                  <div className="mt-2 h-2 rounded-full bg-slate-900/70">
-                    <div
-                      className="h-2 rounded-full"
-                      style={{
-                        width: `${Math.min(item.count * 12, 100)}%`,
-                        backgroundColor: chartColors[index % chartColors.length],
-                      }}
-                    />
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                Sem planos vendidos
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
-        <Card>
-          <CardHeader>
-            <CardTitle>Leads Recentes</CardTitle>
-            <CardDescription>Ultimas oportunidades cadastradas</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="divide-y divide-blue-400/10 rounded-xl border border-blue-400/15 bg-blue-500/5">
-              {loading ? (
-                <p className="p-4 text-sm text-muted-foreground">Carregando</p>
-              ) : data?.recentLeads.length ? (
-                data.recentLeads.map((lead) => (
-                  <div key={lead.id} className="grid gap-3 p-4 text-sm md:grid-cols-[1fr_160px_140px]">
-                    <div className="min-w-0">
-                      <p className="truncate font-medium">{lead.name}</p>
-                      <p className="text-xs text-muted-foreground">{lead.phone}</p>
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      <p>{lead.planName ?? "Sem plano"}</p>
-                      <p>{lead.assignedUserName ?? "Sem responsavel"}</p>
-                    </div>
-                    <div className="text-xs text-muted-foreground md:text-right">
-                      <p>{statusLabels[lead.status] ?? lead.status}</p>
-                      <p>{currency.format(lead.expectedValue)}</p>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <p className="p-4 text-sm text-muted-foreground">Sem leads cadastrados</p>
-              )}
-            </div>
+            <SummaryRow label="Vendas fechadas" value={integer.format(totalSales)} />
+            <SummaryRow label="Faturamento" value={currency.format(totalRevenue)} />
+            <SummaryRow label="Ticket médio" value={currency.format(averageTicket)} />
+            <SummaryRow label="Leads ganhos" value={integer.format(totalSales)} />
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="rounded-[10px] border-[#0c3569] bg-[linear-gradient(180deg,rgba(3,26,59,0.98),rgba(2,23,52,0.98))]">
           <CardHeader>
             <CardTitle>Principais Planos Vendidos</CardTitle>
-            <CardDescription>Quantidade e valor total por plano fechado</CardDescription>
+            <CardDescription>Quantidade e valor total</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-[10px]">
             {planData.length ? (
-              planData.map((item, index) => (
+              planData.slice(0, 5).map((item, index) => (
                 <div key={item.planId ?? item.planName} className="rounded-xl border border-blue-400/15 bg-blue-500/5 p-3">
                   <div className="flex items-center justify-between text-sm">
                     <span>{item.planName}</span>
@@ -198,7 +160,7 @@ export function DashboardOverview({ data, loading }: { data: DashboardOverviewDa
                       className="h-2 rounded-full"
                       style={{
                         width: `${Math.min(item.count * 12, 100)}%`,
-                        backgroundColor: chartColors[index % chartColors.length],
+                        backgroundColor: ["#1684ff", "#33d052", "#8b35ff", "#ffad0a", "#69a7ff"][index % 5],
                       }}
                     />
                   </div>
@@ -212,6 +174,15 @@ export function DashboardOverview({ data, loading }: { data: DashboardOverviewDa
           </CardContent>
         </Card>
       </div>
+    </div>
+  );
+}
+
+function SummaryRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-blue-400/15 bg-blue-500/5 px-4 py-3">
+      <p className="text-[12px] text-[#8798b8]">{label}</p>
+      <p className="mt-1 text-[18px] font-semibold tracking-[-0.03em] text-white">{value}</p>
     </div>
   );
 }

@@ -20,11 +20,12 @@ export class DashboardRepository {
     const chartDateFilter = buildDateFilter(filters);
     const accessWhere = buildDashboardAccessWhere(user);
     const chartLeadWhere: Prisma.LeadWhereInput = { deletedAt: null, ...accessWhere, ...chartDateFilter };
+    const chartConversationWhere: Prisma.ChatConversationWhereInput = { deletedAt: null, ...chartDateFilter };
     const todayFilter = buildTodayFilter();
     const wonWhere: Prisma.LeadWhereInput = { deletedAt: null, status: LeadStatus.WON, ...buildWonAccessWhere(user) };
     const visibleLeadWhere: Prisma.LeadWhereInput = { deletedAt: null, ...accessWhere };
 
-    const [newLeads, totalLeads, conversations, appointments, expenses, leadStatuses, wonLeadRows, chartLeads, recentLeads, kanbanPreview] =
+    const [newLeads, totalLeads, conversations, appointments, expenses, leadStatuses, wonLeadRows, chartLeads, chartConversations, recentLeads, kanbanPreview] =
       await Promise.all([
       prisma.lead.count({ where: { deletedAt: null, createdAt: todayFilter, ...accessWhere } }),
       prisma.lead.count({ where: visibleLeadWhere }),
@@ -42,6 +43,11 @@ export class DashboardRepository {
       }),
       prisma.lead.findMany({
         where: chartLeadWhere,
+        select: { createdAt: true },
+        orderBy: { createdAt: "asc" },
+      }),
+      prisma.chatConversation.findMany({
+        where: chartConversationWhere,
         select: { createdAt: true },
         orderBy: { createdAt: "asc" },
       }),
@@ -102,7 +108,7 @@ export class DashboardRepository {
         count: item._count.status,
       })),
       kanbanPreview,
-      leadChart: buildLeadChart(chartLeads, filters),
+      performanceChart: buildPerformanceChart(chartLeads, chartConversations, filters),
       planSales: planSales.sort((a, b) => b.totalValue - a.totalValue),
       recentLeads: recentLeads.map((lead) => ({
         id: lead.id,
@@ -179,29 +185,35 @@ function buildDateFilter(filters: DashboardFilters) {
   };
 }
 
-function buildLeadChart(leads: Array<{ createdAt: Date }>, filters: DashboardFilters) {
+function buildPerformanceChart(leads: Array<{ createdAt: Date }>, conversations: Array<{ createdAt: Date }>, filters: DashboardFilters) {
   const from = filters.from ?? daysAgo(6);
   const to = filters.to ?? new Date();
   const days = Math.max(1, Math.ceil((endOfDay(to).getTime() - startOfDay(from).getTime()) / 86_400_000) + 1);
-  const buckets = new Map<string, number>();
+  const buckets = new Map<string, { leads: number; conversations: number }>();
 
   for (let index = 0; index < days; index += 1) {
     const date = new Date(startOfDay(from));
     date.setDate(date.getDate() + index);
-    buckets.set(dateKey(date), 0);
+    buckets.set(dateKey(date), { leads: 0, conversations: 0 });
   }
 
   for (const lead of leads) {
     const key = dateKey(lead.createdAt);
-    if (buckets.has(key)) {
-      buckets.set(key, (buckets.get(key) ?? 0) + 1);
-    }
+    const bucket = buckets.get(key);
+    if (bucket) bucket.leads += 1;
   }
 
-  return Array.from(buckets.entries()).map(([date, count]) => ({
+  for (const conversation of conversations) {
+    const key = dateKey(conversation.createdAt);
+    const bucket = buckets.get(key);
+    if (bucket) bucket.conversations += 1;
+  }
+
+  return Array.from(buckets.entries()).map(([date, counts]) => ({
     date,
     label: formatShortDate(date),
-    count,
+    leads: counts.leads,
+    conversations: counts.conversations,
   }));
 }
 

@@ -14,7 +14,7 @@ export function BrandLogo({
   imageClassName,
   priority = false,
 }: BrandLogoProps) {
-  const src = "/brand/logohub.png";
+  const src = "/brand/logosemfundo.png";
   const alt = appConfig.name;
 
   return (

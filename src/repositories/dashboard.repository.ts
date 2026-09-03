@@ -15,9 +15,12 @@ export class DashboardRepository {
     const wonWhere: Prisma.LeadWhereInput = { deletedAt: null, status: LeadStatus.WON, ...buildWonAccessWhere(user) };
     const visibleLeadWhere: Prisma.LeadWhereInput = { deletedAt: null, ...accessWhere };
 
-    const [newLeads, expenses, leadStatuses, wonLeadRows, chartLeads, recentLeads] =
+    const [newLeads, totalLeads, conversations, appointments, expenses, leadStatuses, wonLeadRows, chartLeads, recentLeads] =
       await Promise.all([
       prisma.lead.count({ where: { deletedAt: null, createdAt: todayFilter, ...accessWhere } }),
+      prisma.lead.count({ where: visibleLeadWhere }),
+      prisma.chatConversation.count({ where: { deletedAt: null } }),
+      prisma.appointment.count({ where: user?.role === "EMPLOYEE" ? { deletedAt: null, responsibleId: user.id } : { deletedAt: null } }),
       user?.role === "EMPLOYEE" ? Promise.resolve(0) : getOpenExpensesTotal(),
       prisma.lead.groupBy({
         by: ["status"],
@@ -61,6 +64,9 @@ export class DashboardRepository {
 
     return {
       newLeads,
+      totalLeads,
+      conversations,
+      appointments,
       wonLeads,
       totalValue: wonValue,
       expenses,

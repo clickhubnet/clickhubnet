@@ -4,8 +4,6 @@ import { useEffect } from "react";
 import { Bell, CalendarDays, ChevronDown, Menu, Search } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useRouter } from "next/navigation";
-import { BrandLogo } from "@/components/layout/brand-logo";
-import { appConfig } from "@/config/app";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { clearCurrentUserCache, useCurrentUser } from "@/hooks/use-current-user";
@@ -14,7 +12,7 @@ type HeaderProps = {
   title: string;
 };
 
-export function Header({ title }: HeaderProps) {
+export function Header({ title: _title }: HeaderProps) {
   const { setTheme } = useTheme();
   const router = useRouter();
   const currentUser = useCurrentUser();
@@ -40,16 +38,11 @@ export function Header({ title }: HeaderProps) {
 
   return (
     <header className="sticky top-0 z-30 border-b border-blue-400/15 bg-[#020d20]/78 backdrop-blur-xl">
-      <div className="flex h-20 items-center justify-between gap-4 px-4 sm:px-6 lg:px-10">
+      <div className="flex h-[67px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-6">
         <div className="flex min-w-0 items-center gap-3">
-          <BrandLogo compact className="h-10 w-10 md:hidden" imageClassName="p-0.5" />
           <Button className="hidden md:inline-flex" variant="outline" size="icon" type="button" aria-label="Menu">
             <Menu className="h-5 w-5" />
           </Button>
-          <div className="min-w-0">
-            <h1 className="truncate text-2xl font-semibold tracking-[-0.03em] text-slate-100">{title}</h1>
-            <p className="truncate text-sm text-slate-400">Visão geral do seu negócio</p>
-          </div>
         </div>
         <div className="flex min-w-0 items-center gap-3">
           <div className="relative hidden w-[260px] xl:block">

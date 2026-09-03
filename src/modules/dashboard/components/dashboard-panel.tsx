@@ -13,10 +13,10 @@ import { useApiResource } from "@/hooks/use-api-resource";
 type DashboardData = DashboardMetricsData & DashboardOverviewData;
 
 export function DashboardPanel() {
-  const [period, setPeriod] = useState("7");
+  const [period, setPeriod] = useState("30");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const [appliedPeriod, setAppliedPeriod] = useState("7");
+  const [appliedPeriod, setAppliedPeriod] = useState("30");
   const [appliedFrom, setAppliedFrom] = useState("");
   const [appliedTo, setAppliedTo] = useState("");
   const [refreshKey, setRefreshKey] = useState(() => Date.now());
@@ -52,33 +52,41 @@ export function DashboardPanel() {
 
   return (
     <div className="space-y-4">
-      <div className="glass-panel neon-ring flex flex-col gap-3 rounded-2xl p-4 md:flex-row md:items-end md:justify-between">
-        <div className="grid gap-3 sm:grid-cols-3">
-          <label className="space-y-1 text-sm">
-            <span className="text-xs text-muted-foreground">Periodo do grafico</span>
-            <select
-              className="h-10 w-full rounded-xl border border-input bg-[#02142d]/75 px-3 text-sm"
-              value={period}
-              onChange={(event) => setPeriod(event.target.value)}
-            >
-              <option value="7">Ultimos 7 dias</option>
-              <option value="30">Ultimos 30 dias</option>
-              <option value="90">Ultimos 90 dias</option>
-              <option value="180">6 meses</option>
-              <option value="365">1 ano</option>
-              <option value="custom">Personalizado</option>
-            </select>
-          </label>
-          <label className="space-y-1 text-sm">
-            <span className="text-xs text-muted-foreground">Data inicial</span>
-            <Input disabled={!customPeriod} type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
-          </label>
-          <label className="space-y-1 text-sm">
-            <span className="text-xs text-muted-foreground">Data final</span>
-            <Input disabled={!customPeriod} type="date" value={to} onChange={(event) => setTo(event.target.value)} />
-          </label>
-        </div>
+      <div className="flex flex-col items-end gap-3">
         <div className="flex gap-2">
+          <select
+            className="h-10 w-[118px] rounded-[8px] border border-[#0d376d] bg-[#031936]/80 px-3 text-sm text-[#c6d1e6]"
+            value={period}
+            onChange={(event) => {
+              setPeriod(event.target.value);
+              if (event.target.value !== "custom") {
+                setAppliedPeriod(event.target.value);
+                setAppliedFrom("");
+                setAppliedTo("");
+              }
+            }}
+          >
+            <option value="30">Este mês</option>
+            <option value="7">7 dias</option>
+            <option value="90">90 dias</option>
+            <option value="180">6 meses</option>
+            <option value="365">1 ano</option>
+            <option value="custom">Personalizado</option>
+          </select>
+        </div>
+        {customPeriod ? (
+          <div className="glass-panel neon-ring flex flex-col gap-3 rounded-2xl p-4 md:flex-row md:items-end md:justify-between">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="space-y-1 text-sm">
+                <span className="text-xs text-muted-foreground">Data inicial</span>
+                <Input type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
+              </label>
+              <label className="space-y-1 text-sm">
+                <span className="text-xs text-muted-foreground">Data final</span>
+                <Input type="date" value={to} onChange={(event) => setTo(event.target.value)} />
+              </label>
+            </div>
+            <div className="flex gap-2">
           <Button
             type="button"
             variant="outline"
@@ -97,8 +105,8 @@ export function DashboardPanel() {
             onClick={() => {
               setFrom("");
               setTo("");
-              setPeriod("7");
-              setAppliedPeriod("7");
+              setPeriod("30");
+              setAppliedPeriod("30");
               setAppliedFrom("");
               setAppliedTo("");
             }}
@@ -106,8 +114,10 @@ export function DashboardPanel() {
             <RotateCcw className="h-4 w-4" aria-hidden="true" />
             Limpar
           </Button>
+            </div>
+          </div>
+        ) : null}
         </div>
-      </div>
 
       <DashboardMetrics data={dashboard.data} loading={dashboard.loading} />
       <DashboardOverview data={dashboard.data} loading={dashboard.loading} />

@@ -4,7 +4,6 @@ import Link from "next/link";
 import { ChevronDown } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { BrandLogo } from "@/components/layout/brand-logo";
-import { appConfig } from "@/config/app";
 import { navigationItems } from "@/config/navigation";
 import { useCurrentUser } from "@/hooks/use-current-user";
 
@@ -16,19 +15,19 @@ export function Sidebar() {
   );
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-40 hidden w-[19rem] border-r border-blue-400/15 bg-[#020d20]/90 text-white shadow-[18px_0_60px_rgba(0,0,0,0.25)] backdrop-blur-xl md:block">
+    <aside className="fixed inset-y-0 left-0 z-40 hidden w-[247px] border-r border-blue-400/15 bg-[#020d20]/90 text-white shadow-[18px_0_60px_rgba(0,0,0,0.25)] backdrop-blur-xl md:block">
       <div className="flex h-full flex-col">
-        <div className="flex h-24 items-center border-b border-blue-400/15 px-7">
-          <BrandLogo className="h-14 w-56" priority />
+        <div className="flex h-[67px] items-center border-b border-blue-400/15 px-[16px]">
+          <BrandLogo className="h-[42px] w-[190px]" priority />
         </div>
-        <nav className="flex-1 space-y-3 px-5 py-9">
+        <nav className="flex-1 space-y-[14px] px-[16px] py-[38px]">
           {visibleItems.map((item) => {
             const active = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`group flex items-center gap-4 rounded-xl border px-4 py-3.5 text-[15px] font-medium transition-all ${
+                className={`group flex items-center gap-4 rounded-[8px] border px-4 py-[14px] text-[14px] font-medium transition-all ${
                   active
                     ? "border-primary/60 bg-[linear-gradient(135deg,rgba(0,102,255,0.45),rgba(3,25,54,0.7))] text-white shadow-[0_0_28px_rgba(14,115,216,0.22)]"
                     : "border-transparent text-slate-300 hover:border-blue-400/20 hover:bg-blue-500/10 hover:text-white"

@@ -3,7 +3,7 @@ import { CepRepository } from "@/repositories/cep.repository";
 import { ChatbotRepository } from "@/repositories/chatbot.repository";
 import { OpenAiService } from "@/services/openai/openai.service";
 import type { ExtractedCustomerData } from "@/services/openai/openai.service";
-import { sendEvolutionTextMessage } from "@/services/evolution";
+import { checkEvolutionWhatsAppNumber, sendEvolutionTextMessage } from "@/services/evolution";
 import { ZapiService } from "@/services/zapi/zapi.service";
 import { onlyDigits } from "@/utils/mask";
 
@@ -152,7 +152,8 @@ export class ChatbotEngineService {
       leadId: next.leadId,
     });
     if (provider === "evolution") {
-      await sendEvolutionTextMessage({ to: phone, message: next.reply, delayTypingSeconds: typingEnabled ? delaySeconds : undefined });
+      const destinationPhone = await this.resolveEvolutionDestinationPhone(phone);
+      await sendEvolutionTextMessage({ to: destinationPhone, message: next.reply, delayTypingSeconds: typingEnabled ? delaySeconds : undefined });
     } else {
       await this.zapiService.sendText({
         phone,
@@ -194,6 +195,16 @@ export class ChatbotEngineService {
     });
 
     return { state: next.state, replied: true, delayMs: typingEnabled ? delaySeconds * 1000 : 0 };
+  }
+
+  private async resolveEvolutionDestinationPhone(phone: string) {
+    try {
+      const checked = await checkEvolutionWhatsAppNumber(phone);
+      if (checked.exists && checked.phone) return checked.phone;
+    } catch {
+      // If validation is unavailable, keep the original webhook phone so the flow is not blocked.
+    }
+    return phone;
   }
 
   private async nextResponse(input: {

@@ -400,7 +400,7 @@ function parseWhatsappNumberCheck(result: unknown, fallbackPhone: string): Check
     const entry = candidate as Record<string, unknown>;
     const exists = Boolean(entry.exists ?? entry.exist ?? entry.onWhatsapp ?? entry.isWhatsapp);
     const jid = firstDefinedString([entry.jid, entry.remoteJid, entry.remoteJidAlt]);
-    const phone = normalizePhone(firstDefinedString([entry.number, entry.phone, jid]) || fallbackPhone);
+    const phone = normalizePhone(firstDefinedString([jid, entry.number, entry.phone]) || fallbackPhone);
     if (phone || jid) return { exists, phone: phone || fallbackPhone, jid: jid || undefined, raw: result };
   }
 

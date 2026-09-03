@@ -26,6 +26,18 @@ export async function handleEvolutionWebhook(request: Request) {
     return NextResponse.json(errorResponse("Payload invalido.", "INVALID_WEBHOOK"), { status: 422 });
   }
 
+  const eventName = String(payload.event ?? "").toLowerCase();
+  const isMessageEvent = eventName === "messages.upsert" || eventName.includes("messages.upsert");
+  const isStatusEvent = isEvolutionStatusWebhook(payload);
+  const isPresenceEvent = eventName.includes("presence");
+
+  if (!isMessageEvent && !isStatusEvent && !isPresenceEvent) {
+    return NextResponse.json(successResponse("Evento ignorado.", {
+      ignored: true,
+      event: payload.event ?? null,
+    }));
+  }
+
   if (isEvolutionStatusWebhook(payload)) {
     const updates = extractEvolutionStatusUpdates(payload);
     for (const update of updates) {
@@ -56,6 +68,13 @@ export async function handleEvolutionWebhook(request: Request) {
 
   if (parsed.direction === "saida") {
     return NextResponse.json(successResponse("Mensagem propria ignorada.", { ignored: true }));
+  }
+
+  if (parsed.phone && parsed.phone === process.env.EVOLUTION_DEFAULT_NUMBER?.trim()) {
+    return NextResponse.json(successResponse("Mensagem do numero da instancia ignorada.", {
+      ignored: true,
+      phone: parsed.phone,
+    }));
   }
 
   if (await isBlockedConversation(parsed.phone)) {

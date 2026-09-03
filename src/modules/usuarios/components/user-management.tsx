@@ -21,7 +21,7 @@ const permissionGroups = [
   { title: "Conversas", access: permissions.conversationsView, items: [[permissions.conversationsView, "Acessar Conversas"]] },
   { title: "Compromissos", access: permissions.appointmentsView, items: [[permissions.appointmentsView, "Acessar Compromissos"], [permissions.appointmentsCreate, "Criar compromissos"], [permissions.appointmentsEdit, "Editar compromissos"], [permissions.appointmentsDelete, "Excluir compromissos"]] },
   { title: "Despesas", access: permissions.expensesView, items: [[permissions.expensesView, "Acessar Despesas"], [permissions.expensesEdit, "Cadastrar e editar despesas"], [permissions.expensesDelete, "Excluir despesas"]] },
-  { title: "CEPs", access: permissions.cepsView, items: [[permissions.cepsView, "Consultar cobertura de CEPs"]] },
+  { title: "Cobertura Claro", access: permissions.cepsView, items: [[permissions.cepsView, "Consultar cobertura Claro"]] },
   { title: "N8N", access: permissions.agentsEdit, items: [[permissions.agentsEdit, "Acessar N8N"], [permissions.agentsCreate, "Cadastrar agentes"], [permissions.plansEdit, "Editar planos"], [permissions.openAiEdit, "Configurar OpenAI"], [permissions.zapiEdit, "Configurar Z-API"]] },
   { title: "Configurações", access: permissions.settingsView, items: [[permissions.settingsView, "Acessar Configurações"], [permissions.settingsEdit, "Editar configurações"]] },
 ] as const;

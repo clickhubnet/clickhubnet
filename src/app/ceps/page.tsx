@@ -3,7 +3,7 @@ import { CepPanel } from "@/modules/ceps/components/cep-panel";
 
 export default function CepsPage() {
   return (
-    <AppShell title="CEPs">
+    <AppShell title="Cobertura Claro">
       <CepPanel />
     </AppShell>
   );

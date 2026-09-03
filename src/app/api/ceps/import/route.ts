@@ -1,13 +1,35 @@
 import { NextResponse } from "next/server";
 import { authErrorResponse } from "@/lib/api-errors";
 import { errorResponse, successResponse } from "@/lib/api-response";
-import { logAudit } from "@/lib/audit";
 import { requireCurrentUser } from "@/lib/auth-context";
 import { assertPermission } from "@/lib/permissions";
 import { permissions } from "@/constants/permissions";
-import { CepImportService } from "@/modules/ceps/services/cep-import.service";
+import { getCepImportJob, startCepImportJob } from "@/modules/ceps/services/cep-import-jobs";
 
-const cepImportService = new CepImportService();
+export async function GET(request: Request) {
+  try {
+    const user = await requireCurrentUser();
+    if (user.role !== "ADMIN") throw new Error("FORBIDDEN");
+    assertPermission(user, permissions.cepsImport);
+
+    const url = new URL(request.url);
+    const jobId = url.searchParams.get("jobId");
+    if (!jobId) {
+      return NextResponse.json(errorResponse("Informe o jobId.", "JOB_ID_REQUIRED"), { status: 400 });
+    }
+
+    const job = getCepImportJob(jobId);
+    if (!job) {
+      return NextResponse.json(errorResponse("Importação não encontrada.", "JOB_NOT_FOUND"), { status: 404 });
+    }
+
+    return NextResponse.json(successResponse("Status da importação consultado.", job));
+  } catch (error) {
+    const authError = authErrorResponse(error);
+    if (authError) return authError;
+    return NextResponse.json(errorResponse("Nao foi possivel consultar a importacao."), { status: 500 });
+  }
+}
 
 export async function POST(request: Request) {
   try {
@@ -25,20 +47,13 @@ export async function POST(request: Request) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const result = await cepImportService.importFromBuffer(buffer, file.name);
-    await logAudit({
-      userId: user.id,
-      action: "IMPORT",
-      module: "ceps",
-      description: `Base de CEPs importada: ${file.name}`,
-      metadata: result,
-    });
+    const job = startCepImportJob({ buffer, fileName: file.name, userId: user.id });
 
-    return NextResponse.json(successResponse("Base de CEPs importada.", result));
+    return NextResponse.json(successResponse("Importação iniciada em segundo plano.", job), { status: 202 });
   } catch (error) {
     const authError = authErrorResponse(error);
     if (authError) return authError;
-    return NextResponse.json(errorResponse("Nao foi possivel importar a base de CEPs."), {
+    return NextResponse.json(errorResponse("Nao foi possivel iniciar a importacao da base de CEPs."), {
       status: 500,
     });
   }

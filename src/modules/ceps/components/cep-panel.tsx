@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { FileUp, MapPin, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,6 +30,18 @@ type CepOverview = {
   cities: Array<{ city: string | null; state: string | null; count: number }>;
 };
 
+type CepImportJob = {
+  id: string;
+  fileName: string;
+  status: "queued" | "running" | "completed" | "failed";
+  processed: number;
+  total: number;
+  imported: number;
+  progress: number;
+  message: string;
+  error?: string;
+};
+
 export function CepPanel() {
   const overview = useApiResource<CepOverview>("/api/ceps");
   const currentUser = useCurrentUser();
@@ -37,6 +49,31 @@ export function CepPanel() {
   const [result, setResult] = useState<CepItem>(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [importJob, setImportJob] = useState<CepImportJob | null>(null);
+
+  useEffect(() => {
+    if (!importJob || !["queued", "running"].includes(importJob.status)) return;
+
+    const interval = window.setInterval(async () => {
+      const response = await fetch(`/api/ceps/import?jobId=${importJob.id}`);
+      const data = (await response.json()) as ApiResult<CepImportJob>;
+      if (data.status !== "success") {
+        setImportJob((current) => current ? { ...current, status: "failed", message: data.message } : current);
+        return;
+      }
+
+      setImportJob(data.data);
+      if (data.data.status === "completed") {
+        setMessage(data.data.message);
+        await overview.refresh();
+      }
+      if (data.data.status === "failed") {
+        setMessage(data.data.error ?? data.data.message);
+      }
+    }, 1500);
+
+    return () => window.clearInterval(interval);
+  }, [importJob, overview]);
 
   async function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -49,9 +86,9 @@ export function CepPanel() {
       setMessage(
         data.data
           ? data.data.source === "viacep"
-            ? "CEP encontrado no ViaCEP, mas ainda sem cobertura cadastrada."
-            : "CEP encontrado na base de cobertura."
-          : "CEP nao encontrado.",
+            ? "CEP localizado no ViaCEP, mas ainda não está na base Cobertura Claro."
+            : "CEP encontrado na base Cobertura Claro."
+          : "CEP não encontrado.",
       );
     } else {
       setMessage(data.message);
@@ -77,7 +114,7 @@ export function CepPanel() {
       }),
     });
     const data = (await response.json()) as ApiResult<CepItem>;
-    setMessage(data.status === "success" ? "CEP salvo na base de cobertura." : data.message);
+    setMessage(data.status === "success" ? "CEP salvo na base Cobertura Claro." : data.message);
     if (data.status === "success") {
       form.reset();
       await overview.refresh();
@@ -91,15 +128,13 @@ export function CepPanel() {
     const form = event.currentTarget;
     const formData = new FormData(form);
     const response = await fetch("/api/ceps/import", { method: "POST", body: formData });
-    const data = (await response.json()) as ApiResult<{ totalRows: number; imported: number }>;
-    setMessage(
-      data.status === "success"
-        ? `${data.data.imported} CEPs importados de ${data.data.totalRows} linhas.`
-        : data.message,
-    );
+    const data = (await response.json()) as ApiResult<CepImportJob>;
     if (data.status === "success") {
+      setImportJob(data.data);
+      setMessage("Importação iniciada em segundo plano.");
       form.reset();
-      await overview.refresh();
+    } else {
+      setMessage(data.message);
     }
     setLoading(false);
   }
@@ -107,7 +142,7 @@ export function CepPanel() {
   return (
     <div className="space-y-4">
       {isAdmin ? <div className="grid gap-3 sm:grid-cols-3">
-        <Metric label="CEPs cadastrados" value={String(overview.data?.total ?? 0)} />
+        <Metric label="CEPs na Cobertura Claro" value={String(overview.data?.total ?? 0)} />
         <Metric label="Com cobertura" value={String(overview.data?.available ?? 0)} />
         <Metric label="Sem cobertura" value={String(overview.data?.unavailable ?? 0)} />
       </div> : null}
@@ -115,13 +150,13 @@ export function CepPanel() {
       <div className={`grid gap-4 ${isAdmin ? "xl:grid-cols-[1fr_1fr]" : "max-w-2xl"}`}>
         <Card>
           <CardHeader>
-            <CardTitle>Consultar CEP</CardTitle>
-            <CardDescription>Verificação na base oficial de cobertura importada</CardDescription>
+            <CardTitle>Consultar Cobertura Claro</CardTitle>
+            <CardDescription>Verificação na base importada de cobertura Claro</CardDescription>
           </CardHeader>
           <CardContent>
             <form className="flex gap-2" onSubmit={handleSearch}>
               <Input name="cep" placeholder="00000-000" required />
-              <Button disabled={loading} type="submit" aria-label="Consultar CEP" title="Consultar CEP">
+              <Button disabled={loading} type="submit" aria-label="Consultar cobertura Claro" title="Consultar cobertura Claro">
                 <Search className="h-4 w-4" aria-hidden="true" />
               </Button>
             </form>
@@ -132,8 +167,8 @@ export function CepPanel() {
 
         {isAdmin ? <Card>
           <CardHeader>
-            <CardTitle>Cadastrar Cobertura</CardTitle>
-            <CardDescription>Inclusao ou atualizacao pontual de CEP</CardDescription>
+            <CardTitle>Cadastrar Cobertura Claro</CardTitle>
+            <CardDescription>Inclusão ou atualização pontual de CEP</CardDescription>
           </CardHeader>
           <CardContent>
             <form className="space-y-3" onSubmit={handleManualCreate}>
@@ -161,23 +196,24 @@ export function CepPanel() {
         <Card>
           <CardHeader>
             <CardTitle>Importar Base</CardTitle>
-            <CardDescription>Arquivos XLSX ou CSV</CardDescription>
+            <CardDescription>Arquivos XLSX ou CSV da base Cobertura Claro</CardDescription>
           </CardHeader>
           <CardContent>
             <form className="flex flex-col gap-3 sm:flex-row" onSubmit={handleImport}>
               <Input accept=".xlsx,.xls,.csv" name="file" required type="file" />
-              <Button disabled={loading} type="submit">
+              <Button disabled={loading || importJob?.status === "queued" || importJob?.status === "running"} type="submit">
                 <FileUp className="h-4 w-4" aria-hidden="true" />
-                Importar CEPs
+                Importar Cobertura Claro
               </Button>
             </form>
+            {importJob ? <ImportProgress job={importJob} /> : null}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Cidades com Cobertura</CardTitle>
-            <CardDescription>Maiores concentracoes na base atual</CardDescription>
+            <CardTitle>Cidades com Cobertura Claro</CardTitle>
+            <CardDescription>Maiores concentrações na base atual</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
             {overview.data?.cities.length ? (
@@ -196,18 +232,51 @@ export function CepPanel() {
 
       {isAdmin ? <Card>
         <CardHeader>
-          <CardTitle>Ultimos CEPs Importados</CardTitle>
+          <CardTitle>Últimos CEPs da Cobertura Claro</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {overview.data?.recent.length ? (
               overview.data.recent.map((cep) => <CepResult key={cep.id ?? cep.cep} result={cep} compact />)
             ) : (
-              <EmptyState text="Sem importacoes registradas" />
+              <EmptyState text="Sem importações registradas" />
             )}
           </div>
         </CardContent>
       </Card> : null}
+    </div>
+  );
+}
+
+function ImportProgress({ job }: { job: CepImportJob }) {
+  const progress = Math.max(0, Math.min(100, job.progress));
+  const statusLabel = {
+    queued: "Na fila",
+    running: "Importando",
+    completed: "Concluído",
+    failed: "Erro",
+  }[job.status];
+
+  return (
+    <div className="mt-4 rounded-md border p-4 text-sm">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="font-medium">{statusLabel}: {job.fileName}</p>
+          <p className="text-xs text-muted-foreground">{job.message}</p>
+        </div>
+        <strong>{progress}%</strong>
+      </div>
+      <div className="mt-3 h-3 overflow-hidden rounded-full bg-muted">
+        <div
+          className={`h-full transition-all ${job.status === "failed" ? "bg-destructive" : "bg-primary"}`}
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">
+        {job.total ? `${job.processed.toLocaleString("pt-BR")} / ${job.total.toLocaleString("pt-BR")} linhas` : "Preparando arquivo..."}
+        {job.status === "completed" ? ` · ${job.imported.toLocaleString("pt-BR")} importados` : ""}
+      </p>
+      {job.error ? <p className="mt-2 text-xs text-destructive">{job.error}</p> : null}
     </div>
   );
 }
@@ -230,7 +299,7 @@ function CepResult({ result, compact = false }: { result: NonNullable<CepItem>; 
       </p>
       <p className="mt-2 text-muted-foreground">{result.street || "Sem logradouro"}</p>
       <p className="text-muted-foreground">
-        {[result.neighborhood, result.city, result.state].filter(Boolean).join(" - ") || "Sem localizacao"}
+        {[result.neighborhood, result.city, result.state].filter(Boolean).join(" - ") || "Sem localização"}
       </p>
       <p className="mt-2 font-medium">{result.available ? "Com cobertura" : "Sem cobertura"}</p>
       {!compact && result.source ? <p className="text-xs text-muted-foreground">Origem: {result.source}</p> : null}

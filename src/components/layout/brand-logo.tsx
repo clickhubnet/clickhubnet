@@ -14,8 +14,8 @@ export function BrandLogo({
   imageClassName,
   priority = false,
 }: BrandLogoProps) {
-  const src = compact ? "/brand/logo-central.svg" : "/brand/logo-central-real.png";
-  const alt = compact ? appConfig.shortName : appConfig.name;
+  const src = "/brand/logohub.png";
+  const alt = appConfig.name;
 
   return (
     <div className={cn("relative overflow-hidden", compact ? "h-12 w-12" : "h-40 w-72", className)}>

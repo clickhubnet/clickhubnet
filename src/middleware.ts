@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { authCookieName, verifyAuthToken } from "@/lib/jwt";
 
-const publicRoutes = ["/login", "/brand", "/api/health", "/api/auth/login", "/api/webhooks/zapi"];
+const publicRoutes = ["/login", "/brand", "/api/health", "/api/auth/login", "/api/webhooks/zapi", "/api/whatsapp/webhook"];
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;

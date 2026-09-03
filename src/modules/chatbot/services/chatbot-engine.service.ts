@@ -458,7 +458,7 @@ export class ChatbotEngineService {
           state: "FINISHED",
           memory,
           leadId: lead.id,
-          reply: "Perfeito! 🎉 Seus dados foram confirmados.\n\nVou cadastrar aqui, deixa o celular ligado 📱, porque aprovando você receberá uma ligação da nossa central. Você precisa confirmar as informações do seu plano contratado, tudo bem?\n\nObrigado por escolher a Claro! 🚀 Se precisar de qualquer coisa, é só me chamar!",
+          reply: "Perfeito! 🎉 Seus dados foram confirmados.\n\nVou cadastrar aqui, deixa o celular ligado 📱, porque aprovando você receberá uma ligação da Click Hubnet. Você precisa confirmar as informações do seu plano contratado, tudo bem?\n\nObrigado por escolher a Claro! 🚀 Se precisar de qualquer coisa, é só me chamar!",
         };
       }
 

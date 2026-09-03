@@ -10,7 +10,7 @@ export type AuthTokenPayload = {
   iat: number;
 };
 
-export const authCookieName = "central_dos_planos_session";
+export const authCookieName = "click_hubnet_session";
 
 export function getJwtSecret() {
   const secret = process.env.JWT_SECRET;

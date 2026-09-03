@@ -19,6 +19,7 @@ const defaultEmployeePermissions: Record<string, boolean> = {
   [permissions.leadsCreate]: true,
   [permissions.leadsEdit]: true,
   [permissions.leadsMoveKanban]: true,
+  [permissions.conversationsView]: true,
   [permissions.appointmentsView]: true,
   [permissions.appointmentsCreate]: true,
   [permissions.appointmentsEdit]: true,
@@ -29,7 +30,7 @@ const defaultEmployeePermissions: Record<string, boolean> = {
 const fallbackUsers: InitialUser[] = [
   {
     name: "Joana",
-    email: process.env.ADMIN_INITIAL_EMAIL ?? "joana@central.com",
+    email: process.env.ADMIN_INITIAL_EMAIL ?? "joana@clickhubnet.com.br",
     password: process.env.ADMIN_INITIAL_PASSWORD ?? "roots2601",
     role: "ADMIN",
     title: "Administradora",
@@ -38,14 +39,14 @@ const fallbackUsers: InitialUser[] = [
   },
   {
     name: "Yasmini",
-    email: "yasmini@central.com",
+    email: "yasmini@clickhubnet.com.br",
     password: "acesso@2026",
     role: "EMPLOYEE",
     title: "Operadora",
   },
   {
     name: "Tata",
-    email: "tata@central.com",
+    email: "tata@clickhubnet.com.br",
     password: "acesso@2026",
     role: "EMPLOYEE",
     title: "Operadora",

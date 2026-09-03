@@ -18,6 +18,7 @@ type UserItem = {
 const permissionGroups = [
   { title: "Dashboard", access: permissions.dashboardView, items: [[permissions.dashboardView, "Acessar Dashboard"], [permissions.dashboardEdit, "Editar informações"]] },
   { title: "Leads", access: permissions.leadsView, items: [[permissions.leadsView, "Acessar Leads"], [permissions.leadsCreate, "Cadastrar leads"], [permissions.leadsEdit, "Editar leads"], [permissions.leadsDelete, "Excluir leads"], [permissions.leadsMoveKanban, "Mover no Kanban"], [permissions.leadsExport, "Exportar planilha"]] },
+  { title: "Conversas", access: permissions.conversationsView, items: [[permissions.conversationsView, "Acessar Conversas"]] },
   { title: "Compromissos", access: permissions.appointmentsView, items: [[permissions.appointmentsView, "Acessar Compromissos"], [permissions.appointmentsCreate, "Criar compromissos"], [permissions.appointmentsEdit, "Editar compromissos"], [permissions.appointmentsDelete, "Excluir compromissos"]] },
   { title: "Despesas", access: permissions.expensesView, items: [[permissions.expensesView, "Acessar Despesas"], [permissions.expensesEdit, "Cadastrar e editar despesas"], [permissions.expensesDelete, "Excluir despesas"]] },
   { title: "CEPs", access: permissions.cepsView, items: [[permissions.cepsView, "Consultar cobertura de CEPs"]] },

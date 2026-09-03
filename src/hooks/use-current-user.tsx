@@ -16,7 +16,7 @@ export type CurrentUser = {
 
 type CurrentUserResource = ReturnType<typeof useApiResource<CurrentUser>>;
 const CurrentUserContext = createContext<CurrentUserResource | null>(null);
-const storageKey = "central-dos-planos-current-user";
+const storageKey = "click-hubnet-current-user";
 
 export function CurrentUserProvider({ children }: { children: ReactNode }) {
   const resource = useApiResource<CurrentUser>("/api/auth/me");

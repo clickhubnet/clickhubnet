@@ -34,7 +34,7 @@ const defaultSteps: FlowStep[] = [
   { id: "billing", state: "ASK_BILLING_DUE_DAY", title: "Vencimento", message: "Perguntar o melhor dia para vencimento da fatura: 5, 8, 10, 15, 20 ou 25." },
   { id: "email", state: "ASK_EMAIL", title: "E-mail", message: "Pedir o e-mail para finalizar o cadastro." },
   { id: "confirm", state: "CONFIRM_DATA", title: "Confirmação dos dados", message: "Exibir resumo completo com CEP, nome, documento, nascimento, endereço, e-mail, vencimento e plano. Se estiver correto, criar lead na aba Leads." },
-  { id: "finish", state: "FINISHED", title: "Finalização", message: "Perfeito! 🎉 Seus dados foram confirmados. Vou cadastrar aqui, deixa o celular ligado 📱, porque aprovando você receberá uma ligação da nossa central." },
+  { id: "finish", state: "FINISHED", title: "Finalização", message: "Perfeito! 🎉 Seus dados foram confirmados. Vou cadastrar aqui, deixa o celular ligado 📱, porque aprovando você receberá uma ligação da Click Hubnet." },
 ];
 
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });

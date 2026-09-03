@@ -8,3 +8,4 @@ coverage
 *.pdf
 public/*.xls
 public/*.xlsx
+/logohub.png

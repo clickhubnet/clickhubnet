@@ -7,6 +7,7 @@ export const permissions = {
   leadsDelete: "leads:delete",
   leadsMoveKanban: "leads:move-kanban",
   leadsExport: "leads:export",
+  conversationsView: "conversations:view",
   appointmentsView: "appointments:view",
   appointmentsCreate: "appointments:create",
   appointmentsEdit: "appointments:edit",

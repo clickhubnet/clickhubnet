@@ -150,7 +150,7 @@ const flow = {
       state: "FINISHED",
       title: "Finalização",
       message:
-        "Perfeito! 🎉 Seus dados foram confirmados. Vou cadastrar aqui, deixa o celular ligado 📱, porque aprovando você receberá uma ligação da nossa central.",
+        "Perfeito! 🎉 Seus dados foram confirmados. Vou cadastrar aqui, deixa o celular ligado 📱, porque aprovando você receberá uma ligação da Click Hubnet.",
     },
   ],
 };

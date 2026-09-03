@@ -55,7 +55,7 @@ export function LoginForm() {
           <Input
             className="pl-9 text-slate-950"
             name="email"
-            placeholder="usuario@centraldosplanos.com.br"
+            placeholder="usuario@clickhubnet.com.br"
             required
             type="email"
           />

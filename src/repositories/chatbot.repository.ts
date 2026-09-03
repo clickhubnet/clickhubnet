@@ -50,6 +50,79 @@ export class ChatbotRepository {
     });
   }
 
+  async findConversationById(id: string) {
+    return prisma.chatConversation.findFirst({
+      where: { id, deletedAt: null },
+      include: {
+        lead: true,
+        agent: true,
+        owner: true,
+        messages: { orderBy: { createdAt: "asc" } },
+      },
+    });
+  }
+
+  async findConversationByPhone(phone: string) {
+    return prisma.chatConversation.findFirst({
+      where: { phone, deletedAt: null },
+      include: { messages: { orderBy: { createdAt: "asc" } } },
+      orderBy: { updatedAt: "desc" },
+    });
+  }
+
+  async createManualConversation(input: {
+    phone: string;
+    name?: string;
+    assignedTo?: string;
+    ownerUserId?: string;
+  }) {
+    return prisma.chatConversation.create({
+      data: {
+        phone: input.phone,
+        state: "MANUAL",
+        ownerUserId: input.ownerUserId,
+        memory: {
+          contactName: input.name?.trim() || input.phone,
+          assignedTo: input.assignedTo?.trim() || "Equipe",
+          source: "manual",
+          tags: ["evolution", "manual"],
+        },
+      },
+      include: { messages: { orderBy: { createdAt: "asc" } } },
+    });
+  }
+
+  async updateManualConversation(input: {
+    id: string;
+    name?: string;
+    assignedTo?: string;
+    tags?: unknown;
+    state?: string;
+  }) {
+    const current = await prisma.chatConversation.findUnique({ where: { id: input.id } });
+    const memory = normalizeJsonObject(current?.memory);
+    return prisma.chatConversation.update({
+      where: { id: input.id },
+      data: {
+        state: input.state ?? current?.state,
+        memory: normalizeJsonValue({
+          ...memory,
+          contactName: input.name ?? memory.contactName,
+          assignedTo: input.assignedTo ?? memory.assignedTo,
+          tags: input.tags ?? memory.tags,
+        }),
+      },
+      include: { messages: { orderBy: { createdAt: "asc" } } },
+    });
+  }
+
+  async softDeleteConversation(id: string) {
+    return prisma.chatConversation.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+  }
+
   async claimInboundMessage(input: {
     conversationId: string;
     body: string;
@@ -196,4 +269,13 @@ export class ChatbotRepository {
       take: 50,
     });
   }
+}
+
+function normalizeJsonObject(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return value as Record<string, unknown>;
+}
+
+function normalizeJsonValue(value: unknown) {
+  return JSON.parse(JSON.stringify(value ?? null)) as Prisma.InputJsonValue;
 }

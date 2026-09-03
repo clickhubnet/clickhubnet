@@ -8,36 +8,33 @@ loadEnvFile(".env");
 const prisma = new PrismaClient();
 
 async function main() {
-  const filePath = resolve(process.argv[2] ?? "CEPS BASE CLARO.xlsx");
-  const fileName = basename(filePath);
-  const buffer = readFileSync(filePath);
-  const workbook = read(buffer, { type: "buffer" });
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  const rows = utils.sheet_to_json(sheet, { defval: "" });
+  const args = process.argv.slice(2);
+  const appendMode = args.includes("--append");
+  const fileArgs = args.filter((arg) => arg !== "--append");
+  const filePaths = (fileArgs.length ? fileArgs : ["CEPS BASE CLARO.xlsx"]).map((file) => resolve(file));
+  const imports = filePaths.map(readCoverageFile);
+  const rows = imports.flatMap((item) => item.rows);
+  const ceps = imports.flatMap((item) => item.ceps);
 
-  const ceps = rows
-    .map(normalizeCoverageRow)
-    .filter(Boolean);
-
-  console.log(`Linhas na planilha: ${rows.length.toLocaleString("pt-BR")}`);
+  console.log(`Arquivos: ${imports.map((item) => item.fileName).join(", ")}`);
+  console.log(`Linhas nas planilhas: ${rows.length.toLocaleString("pt-BR")}`);
   console.log(`Linhas validas com CEP: ${ceps.length.toLocaleString("pt-BR")}`);
-  console.log("Limpando importacoes anteriores sem apagar cadastros manuais...");
 
-  await prisma.coverageCep.deleteMany({
-    where: {
-      importedFrom: { not: "cadastro-manual" },
-    },
-  });
+  if (appendMode) {
+    console.log("Modo append ativo: mantendo importacoes anteriores e acrescentando novos CEPs.");
+  } else {
+    console.log("Limpando importacoes anteriores sem apagar cadastros manuais...");
+    await prisma.coverageCep.deleteMany({
+      where: {
+        importedFrom: { not: "cadastro-manual" },
+      },
+    });
+  }
 
-  const now = new Date();
   let imported = 0;
   for (const batch of chunk(ceps, 5000)) {
     const result = await prisma.coverageCep.createMany({
-      data: batch.map((item) => ({
-        ...item,
-        importedFrom: fileName,
-        importedAt: now,
-      })),
+      data: batch,
     });
     imported += result.count;
     console.log(`Importando cobertura Claro: ${imported.toLocaleString("pt-BR")}/${ceps.length.toLocaleString("pt-BR")}`);
@@ -49,8 +46,27 @@ async function main() {
     validRows: ceps.length,
     imported,
     totalInDb,
+    appendMode,
     duplicatesPreserved: true,
   }, null, 2));
+}
+
+function readCoverageFile(filePath) {
+  const fileName = basename(filePath);
+  const buffer = readFileSync(filePath);
+  const workbook = read(buffer, { type: "buffer" });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows = utils.sheet_to_json(sheet, { defval: "" });
+  const now = new Date();
+  const ceps = rows
+    .map(normalizeCoverageRow)
+    .filter(Boolean)
+    .map((item) => ({
+      ...item,
+      importedFrom: fileName,
+      importedAt: now,
+    }));
+  return { fileName, rows, ceps };
 }
 
 function normalizeCoverageRow(row) {

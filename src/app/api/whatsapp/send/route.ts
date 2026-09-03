@@ -70,6 +70,10 @@ export async function POST(request: Request) {
         } as Prisma.InputJsonValue,
       },
     });
+    await prisma.chatConversation.update({
+      where: { id: conversation.id },
+      data: { updatedAt: new Date() },
+    });
 
     return NextResponse.json(successResponse("Mensagem enviada.", { result, conversationId: conversation.id }));
   } catch (error) {
@@ -102,8 +106,7 @@ async function findOrCreateConversation(input: { id?: string; phone: string; con
       memory: {
         contactName: input.contactName?.trim() || input.phone,
         assignedTo: "Equipe",
-        source: "manual",
-        tags: ["evolution", "manual"],
+        tags: [],
       },
     },
   });

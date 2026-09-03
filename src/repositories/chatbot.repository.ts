@@ -45,9 +45,14 @@ export class ChatbotRepository {
     providerId?: string;
     rawPayload?: Prisma.InputJsonValue;
   }) {
-    return prisma.chatMessage.create({
+    const message = await prisma.chatMessage.create({
       data: input,
     });
+    await prisma.chatConversation.update({
+      where: { id: input.conversationId },
+      data: { updatedAt: new Date() },
+    });
+    return message;
   }
 
   async findConversationById(id: string) {
@@ -84,8 +89,7 @@ export class ChatbotRepository {
         memory: {
           contactName: input.name?.trim() || input.phone,
           assignedTo: input.assignedTo?.trim() || "Equipe",
-          source: "manual",
-          tags: ["evolution", "manual"],
+          tags: [],
         },
       },
       include: { messages: { orderBy: { createdAt: "asc" } } },
@@ -135,6 +139,10 @@ export class ChatbotRepository {
           ...input,
           direction: "inbound",
         },
+      });
+      await prisma.chatConversation.update({
+        where: { id: input.conversationId },
+        data: { updatedAt: new Date() },
       });
       return true;
     } catch (error) {
@@ -260,9 +268,9 @@ export class ChatbotRepository {
       include: {
         lead: true,
         agent: true,
+        owner: true,
         messages: {
-          orderBy: { createdAt: "desc" },
-          take: 3,
+          orderBy: { createdAt: "asc" },
         },
       },
       orderBy: { updatedAt: "desc" },

@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
-import { CalendarClock, Check, Download, Eye, LayoutGrid, List, MessageCircle, MessageSquareText, Pencil, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
+import { CalendarClock, Check, Clipboard, Download, Eye, LayoutGrid, List, MessageCircle, MessageSquareText, Pencil, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -923,8 +923,19 @@ function LeadDetailPanel({
   onClose: () => void;
   onSave: (id: string, payload: Partial<LeadListItem>) => Promise<void>;
 }) {
+  const [copiedConsultation, setCopiedConsultation] = useState(false);
+
   if (!lead && !loading) {
     return null;
+  }
+
+  async function copyConsultationAddress() {
+    if (!lead) return;
+    const value = buildConsultationAddress(lead);
+    if (!value) return;
+    await navigator.clipboard.writeText(value);
+    setCopiedConsultation(true);
+    window.setTimeout(() => setCopiedConsultation(false), 1800);
   }
 
   return (
@@ -947,6 +958,22 @@ function LeadDetailPanel({
           ) : lead ? (
             <>
               <LeadEditForm lead={lead} users={users} plans={plans} stages={stages} onSave={onSave} />
+
+              <section className="rounded-md border p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h3 className="text-sm font-semibold uppercase tracking-wide">Copiar para consulta</h3>
+                  <Button size="sm" variant="outline" type="button" onClick={() => void copyConsultationAddress()} disabled={!buildConsultationAddress(lead)}>
+                    <Clipboard className="h-4 w-4" aria-hidden="true" />
+                    {copiedConsultation ? "Copiado" : "Copiar"}
+                  </Button>
+                </div>
+                <Textarea
+                  className="mt-3 min-h-28 resize-none text-sm"
+                  value={buildConsultationAddress(lead)}
+                  readOnly
+                  placeholder="Endereço completo com CEP aparecerá aqui quando estiver preenchido."
+                />
+              </section>
 
               <section className="rounded-md border p-4">
                 <h3 className="flex items-center gap-2 text-sm font-semibold">
@@ -1020,6 +1047,35 @@ function Info({ label, value }: { label: string; value: string }) {
       <p className="font-medium">{value}</p>
     </div>
   );
+}
+
+function buildConsultationAddress(lead: Partial<LeadListItem>) {
+  const streetLine = [
+    normalizeText(lead.address),
+    lead.streetNumber ? `nº ${normalizeText(lead.streetNumber)}` : "",
+    normalizeText(lead.complement),
+  ].filter(Boolean).join(", ");
+  const locationLine = [
+    normalizeText(lead.neighborhood),
+    normalizeText(lead.city),
+    normalizeText(lead.state),
+  ].filter(Boolean).join(" - ");
+  const cepLine = normalizeCep(lead.cep);
+  return [
+    streetLine,
+    locationLine,
+    cepLine ? `CEP: ${cepLine}` : "",
+  ].filter(Boolean).join("\n");
+}
+
+function normalizeText(value?: string | null) {
+  return String(value ?? "").trim();
+}
+
+function normalizeCep(value?: string | null) {
+  const digits = String(value ?? "").replace(/\D/g, "");
+  if (digits.length !== 8) return normalizeText(value);
+  return `${digits.slice(0, 5)}-${digits.slice(5)}`;
 }
 
 function StageSelect({

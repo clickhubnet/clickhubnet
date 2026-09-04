@@ -105,6 +105,51 @@ export class ChatbotRepository {
     blocked?: boolean;
   }) {
     const current = await prisma.chatConversation.findUnique({ where: { id: input.id } });
+    if (!current) {
+      throw new Error("Conversation not found");
+    }
+
+    if (input.blocked !== undefined) {
+      const conversations = await prisma.chatConversation.findMany({
+        where: { phone: current.phone, deletedAt: null },
+        select: { id: true, state: true, memory: true },
+      });
+
+      await prisma.$transaction(conversations.map((conversation) => {
+        const conversationMemory = normalizeJsonObject(conversation.memory);
+        const conversationPreviousState = typeof conversationMemory.previousState === "string"
+          ? conversationMemory.previousState
+          : undefined;
+        const nextState = input.blocked
+          ? "BLOCKED"
+          : conversationPreviousState ?? "MANUAL";
+
+        return prisma.chatConversation.update({
+          where: { id: conversation.id },
+          data: {
+            state: nextState,
+            memory: normalizeJsonValue({
+              ...conversationMemory,
+              contactName: conversation.id === input.id ? input.name ?? conversationMemory.contactName : conversationMemory.contactName,
+              assignedTo: conversation.id === input.id ? input.assignedTo ?? conversationMemory.assignedTo : conversationMemory.assignedTo,
+              tags: conversation.id === input.id ? input.tags ?? conversationMemory.tags : conversationMemory.tags,
+              blocked: input.blocked,
+              previousState: input.blocked ? (conversationPreviousState ?? conversation.state ?? "MANUAL") : conversationPreviousState,
+            }),
+          },
+        });
+      }));
+
+      const updated = await prisma.chatConversation.findUnique({
+        where: { id: input.id },
+        include: { messages: { orderBy: { createdAt: "asc" } } },
+      });
+      if (!updated) {
+        throw new Error("Conversation not found");
+      }
+      return updated;
+    }
+
     const memory = normalizeJsonObject(current?.memory);
     const previousState = typeof memory.previousState === "string" ? memory.previousState : undefined;
     const nextState = input.blocked === true

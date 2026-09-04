@@ -38,6 +38,10 @@ type NewConversationState = {
   bulkMode: boolean;
   phones: string;
   bulkMessage: string;
+  bulkImage: string;
+  bulkImageName: string;
+  bulkImageMimeType: string;
+  sendNow: boolean;
   scheduleBlocks: ScheduleBlock[];
 };
 
@@ -53,6 +57,10 @@ const emptyNewConversation: NewConversationState = {
   bulkMode: false,
   phones: "",
   bulkMessage: "",
+  bulkImage: "",
+  bulkImageName: "",
+  bulkImageMimeType: "",
+  sendNow: false,
   scheduleBlocks: [
     { id: "slot-0900", time: "09:00", quantity: "25" },
     { id: "slot-1010", time: "10:10", quantity: "30" },
@@ -96,7 +104,9 @@ export function ConversationsPanel() {
   const [message, setMessage] = useState("");
   const [newTag, setNewTag] = useState("");
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
   const [broadcastHistory, setBroadcastHistory] = useState<BroadcastDispatch[]>([]);
+  const [selectedHistoryIds, setSelectedHistoryIds] = useState<string[]>([]);
   const [submittingConversation, setSubmittingConversation] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -114,7 +124,7 @@ export function ConversationsPanel() {
     return Array.from(new Set(conversations.flatMap((conversation) => getConversationTags(conversation)))).sort((a, b) => a.localeCompare(b));
   }, [conversations]);
   const bulkPhoneCount = useMemo(() => countBulkPhones(newConversation.phones), [newConversation.phones]);
-  const scheduledQuantity = useMemo(() => sumScheduleQuantity(newConversation.scheduleBlocks), [newConversation.scheduleBlocks]);
+  const scheduledQuantity = useMemo(() => newConversation.sendNow ? bulkPhoneCount : sumScheduleQuantity(newConversation.scheduleBlocks), [bulkPhoneCount, newConversation.scheduleBlocks, newConversation.sendNow]);
   const remainingToSchedule = bulkPhoneCount - scheduledQuantity;
 
   async function refreshConversations(nextActiveId?: string) {
@@ -144,11 +154,11 @@ export function ConversationsPanel() {
   }, []);
 
   useEffect(() => {
-    if (!createModalOpen) return;
+    if (!createModalOpen && !historyModalOpen) return;
     void refreshBroadcastHistory();
     const interval = window.setInterval(() => void refreshBroadcastHistory(), 5000);
     return () => window.clearInterval(interval);
-  }, [createModalOpen]);
+  }, [createModalOpen, historyModalOpen]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -167,6 +177,10 @@ export function ConversationsPanel() {
         body: JSON.stringify({
           phones: newConversation.phones,
           message: newConversation.bulkMessage,
+          media: newConversation.bulkImage,
+          mimeType: newConversation.bulkImageMimeType,
+          fileName: newConversation.bulkImageName,
+          sendNow: newConversation.sendNow,
           scheduleBlocks: newConversation.scheduleBlocks.map((block) => ({
             time: block.time,
             quantity: Number(block.quantity) || 0,
@@ -181,6 +195,8 @@ export function ConversationsPanel() {
       }
 
       setNewConversation(emptyNewConversation);
+      setCreateModalOpen(false);
+      setHistoryModalOpen(true);
       await refreshBroadcastHistory();
       await refreshConversations();
       return;
@@ -232,6 +248,55 @@ export function ConversationsPanel() {
     } catch {
       setError("Nao foi possivel ler a planilha. Use .xlsx, .xls ou .csv.");
     }
+  }
+
+  async function handleBulkImageChange(file?: File | null) {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError("Selecione uma imagem valida para o disparo.");
+      return;
+    }
+    const dataUrl = await readFileAsDataUrl(file);
+    setNewConversation((current) => ({
+      ...current,
+      bulkImage: dataUrl,
+      bulkImageName: file.name,
+      bulkImageMimeType: file.type,
+    }));
+  }
+
+  async function deleteHistory(ids?: string[]) {
+    if (ids?.length && !window.confirm(`Excluir ${ids.length} registro(s) do historico? As conversas nao serao apagadas.`)) return;
+    if (!ids?.length && !window.confirm("Excluir todo o historico de disparos? As conversas nao serao apagadas.")) return;
+    const response = await fetch("/api/whatsapp/broadcast", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(ids?.length ? { ids } : { all: true }),
+    });
+    const result = await response.json() as ApiResult<{ deleted: number }>;
+    if (result.status !== "success") {
+      setError(result.message);
+      return;
+    }
+    setSelectedHistoryIds([]);
+    await refreshBroadcastHistory();
+  }
+
+  async function cancelHistory(ids: string[]) {
+    if (!ids.length) return;
+    if (!window.confirm(`Cancelar ${ids.length} agendamento(s)? Mensagens ja enviadas nao serao apagadas.`)) return;
+    const response = await fetch("/api/whatsapp/broadcast", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "cancel", ids }),
+    });
+    const result = await response.json() as ApiResult<{ canceled: number }>;
+    if (result.status !== "success") {
+      setError(result.message);
+      return;
+    }
+    setSelectedHistoryIds([]);
+    await refreshBroadcastHistory();
   }
 
   function updateScheduleBlock(id: string, patch: Partial<ScheduleBlock>) {
@@ -563,6 +628,15 @@ export function ConversationsPanel() {
 
             {newConversation.bulkMode ? (
               <>
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-blue-400/15 bg-blue-500/5 p-3">
+                  <div>
+                    <p className="text-sm font-semibold">Disparo em lote</p>
+                    <p className="text-xs text-muted-foreground">Importe planilha, cole números, anexe imagem e escolha disparar agora ou agendar.</p>
+                  </div>
+                  <Button size="sm" variant="outline" type="button" onClick={() => setHistoryModalOpen(true)}>
+                    Histórico
+                  </Button>
+                </div>
                 <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-blue-400/30 bg-blue-500/5 p-4 text-sm font-medium text-blue-100 transition hover:bg-blue-500/10">
                   <Upload className="h-4 w-4" />
                   Subir planilha .xlsx, .xls ou .csv
@@ -587,18 +661,52 @@ export function ConversationsPanel() {
                   placeholder="Mensagem do disparo"
                   required
                 />
+                <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-blue-400/30 bg-blue-500/5 p-4 text-sm font-medium text-blue-100 transition hover:bg-blue-500/10">
+                  <Upload className="h-4 w-4" />
+                  {newConversation.bulkImageName ? `Imagem selecionada: ${newConversation.bulkImageName}` : "Enviar imagem do disparo"}
+                  <input
+                    className="hidden"
+                    type="file"
+                    accept="image/*"
+                    onChange={(event) => void handleBulkImageChange(event.target.files?.[0])}
+                  />
+                </label>
+                {newConversation.bulkImage ? (
+                  <div className="rounded-xl border border-blue-400/15 bg-slate-950/40 p-2">
+                    <img src={newConversation.bulkImage} alt="Imagem do disparo" className="max-h-48 w-full rounded-lg object-contain" />
+                    <Button
+                      className="mt-2"
+                      size="sm"
+                      variant="outline"
+                      type="button"
+                      onClick={() => setNewConversation((current) => ({ ...current, bulkImage: "", bulkImageName: "", bulkImageMimeType: "" }))}
+                    >
+                      Remover imagem
+                    </Button>
+                  </div>
+                ) : null}
+                <label className="flex items-center gap-2 rounded-xl border border-blue-400/15 bg-blue-500/5 p-3 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={newConversation.sendNow}
+                    onChange={(event) => setNewConversation((current) => ({ ...current, sendNow: event.target.checked }))}
+                  />
+                  Disparar na hora, mantendo intervalo aleatório entre cada número
+                </label>
                 <div className="rounded-xl border border-blue-400/15 bg-blue-500/5 p-3">
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold">Agenda dos disparos</p>
-                      <p className="text-xs text-muted-foreground">Cada bloco usa a mesma lista e envia um por um com intervalo aleatório.</p>
+                      <p className="text-xs text-muted-foreground">
+                        {newConversation.sendNow ? "Desative “Disparar na hora” para programar horários." : "Cada bloco usa a mesma lista e envia um por um com intervalo aleatório."}
+                      </p>
                     </div>
-                    <Button size="sm" variant="outline" type="button" onClick={addScheduleBlock}>
+                    <Button size="sm" variant="outline" type="button" onClick={addScheduleBlock} disabled={newConversation.sendNow}>
                       <Plus className="h-3.5 w-3.5" />
                       Bloco
                     </Button>
                   </div>
-                  <div className="space-y-2">
+                  <div className={`space-y-2 ${newConversation.sendNow ? "pointer-events-none opacity-50" : ""}`}>
                     {newConversation.scheduleBlocks.map((block, index) => (
                       <div key={block.id} className="grid grid-cols-[1fr_1fr_auto] gap-2">
                         <Input
@@ -656,55 +764,86 @@ export function ConversationsPanel() {
             )}
             <Button className="w-full" type="submit">
               <Phone className="h-4 w-4" />
-              {submittingConversation ? "Processando..." : newConversation.bulkMode ? "Iniciar disparo" : "Iniciar conversa"}
+              {submittingConversation ? "Processando..." : newConversation.bulkMode ? newConversation.sendNow ? "Disparar agora" : "Agendar disparo" : "Iniciar conversa"}
             </Button>
           </form>
-          {newConversation.bulkMode ? (
-            <div className="mt-5 border-t border-blue-400/15 pt-4">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <h3 className="text-sm font-semibold">Histórico de disparos</h3>
+        </Modal>
+      ) : null}
+      {historyModalOpen ? (
+        <Modal title="Histórico de disparos" onClose={() => setHistoryModalOpen(false)}>
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm text-muted-foreground">
+                Histórico separado das conversas. Excluir aqui não apaga nenhuma conversa.
+              </p>
+              <div className="flex flex-wrap gap-2">
                 <Button size="sm" variant="outline" type="button" onClick={() => void refreshBroadcastHistory()}>
                   <RefreshCw className="h-3.5 w-3.5" />
                   Atualizar
                 </Button>
-              </div>
-              <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
-                {broadcastHistory.length ? broadcastHistory.map((item) => (
-                  <div key={item.id} className="rounded-xl border border-blue-400/15 bg-blue-500/5 p-3 text-xs">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-semibold text-sm">{item.title}</p>
-                        <p className="mt-1 text-muted-foreground">{formatDate(item.createdAt)} · {formatBroadcastStatus(item.status)}</p>
-                      </div>
-                      <span className="rounded-full bg-blue-500/15 px-2 py-1 font-semibold text-blue-200">
-                        {item.sent}/{Math.max(0, item.total - item.invalid - item.duplicate)}
-                      </span>
-                    </div>
-                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-blue-950">
-                      <div className="h-full rounded-full bg-blue-500" style={{ width: `${getBroadcastProgress(item)}%` }} />
-                    </div>
-                    <p className="mt-2 text-muted-foreground">
-                      Enviados: {item.sent} · Falhas: {item.failed} · Inválidos: {item.invalid} · Duplicados: {item.duplicate}
-                    </p>
-                    {item.recipientStatuses?.length ? (
-                      <div className="mt-2 max-h-24 overflow-y-auto rounded-lg bg-slate-950/40 p-2">
-                        {item.recipientStatuses.slice(0, 20).map((recipient) => (
-                          <p key={`${item.id}-${recipient.phone}`} className="flex justify-between gap-2">
-                            <span>{recipient.phone}</span>
-                            <span>{formatBroadcastStatus(recipient.status)}{recipient.scheduledFor ? ` · ${formatTime(recipient.scheduledFor)}` : ""}</span>
-                          </p>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                )) : (
-                  <p className="rounded-xl border border-dashed border-blue-400/20 p-4 text-center text-sm text-muted-foreground">
-                    Nenhum disparo registrado ainda.
-                  </p>
-                )}
+                <Button size="sm" variant="outline" type="button" disabled={!selectedHistoryIds.length} onClick={() => void cancelHistory(selectedHistoryIds)}>
+                  Cancelar selecionados
+                </Button>
+                <Button size="sm" variant="destructive" type="button" disabled={!selectedHistoryIds.length} onClick={() => void deleteHistory(selectedHistoryIds)}>
+                  Apagar selecionados
+                </Button>
+                <Button size="sm" variant="destructive" type="button" disabled={!broadcastHistory.length} onClick={() => void deleteHistory()}>
+                  Apagar tudo
+                </Button>
               </div>
             </div>
-          ) : null}
+            <div className="max-h-[70vh] space-y-3 overflow-y-auto pr-1">
+              {broadcastHistory.length ? broadcastHistory.map((item) => (
+                <div key={item.id} className="rounded-xl border border-blue-400/15 bg-blue-500/5 p-3 text-xs">
+                  <div className="flex items-start gap-3">
+                    <input
+                      className="mt-1"
+                      type="checkbox"
+                      checked={selectedHistoryIds.includes(item.id)}
+                      onChange={(event) => setSelectedHistoryIds((current) =>
+                        event.target.checked ? [...current, item.id] : current.filter((id) => id !== item.id),
+                      )}
+                      aria-label={`Selecionar ${item.title}`}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-semibold text-sm">{item.title}</p>
+                          <p className="mt-1 text-muted-foreground">{formatDate(item.createdAt)} · {formatBroadcastStatus(item.status)}</p>
+                        </div>
+                        <span className="rounded-full bg-blue-500/15 px-2 py-1 font-semibold text-blue-200">
+                          {item.sent}/{Math.max(0, item.total - item.invalid - item.duplicate)}
+                        </span>
+                      </div>
+                      <p className="mt-2 line-clamp-2 whitespace-pre-wrap text-muted-foreground">{item.message || "Disparo com imagem"}</p>
+                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-blue-950">
+                        <div className="h-full rounded-full bg-blue-500" style={{ width: `${getBroadcastProgress(item)}%` }} />
+                      </div>
+                      <p className="mt-2 text-muted-foreground">
+                        Enviados: {item.sent} · Falhas: {item.failed} · Inválidos: {item.invalid} · Duplicados: {item.duplicate}
+                      </p>
+                      {item.recipientStatuses?.length ? (
+                        <div className="mt-2 max-h-56 overflow-y-auto rounded-lg bg-slate-950/40 p-2">
+                          {item.recipientStatuses.map((recipient) => (
+                            <p key={`${item.id}-${recipient.phone}`} className="flex justify-between gap-2 py-0.5">
+                              <span>{recipient.phone}</span>
+                              <span className="text-right">
+                                {formatBroadcastStatus(recipient.status)}{recipient.scheduledFor ? ` · ${formatDate(recipient.scheduledFor)}` : ""}
+                              </span>
+                            </p>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              )) : (
+                <p className="rounded-xl border border-dashed border-blue-400/20 p-6 text-center text-sm text-muted-foreground">
+                  Nenhum disparo registrado ainda.
+                </p>
+              )}
+            </div>
+          </div>
         </Modal>
       ) : null}
     </div>
@@ -883,7 +1022,7 @@ function getLocalMessageStatus(message: ChatMessage) {
 function getBroadcastProgress(item: BroadcastDispatch) {
   const actionable = Math.max(1, item.total - item.invalid - item.duplicate);
   const finished = item.recipientStatuses.filter((recipient) =>
-    ["enviado", "sem_whatsapp", "falha_validacao", "falha_envio", "auto_pausado"].includes(recipient.status),
+    ["enviado", "sem_whatsapp", "falha_validacao", "falha_envio", "auto_pausado", "cancelado"].includes(recipient.status),
   ).length;
   return Math.min(100, Math.round((finished / actionable) * 100));
 }
@@ -897,11 +1036,21 @@ function formatBroadcastStatus(status: string) {
     falha_validacao: "Falha validação",
     falha_envio: "Falha envio",
     auto_pausado: "Pausado",
+    cancelado: "Cancelado",
     concluido: "Concluído",
     concluido_parcial: "Concluído parcial",
     concluido_sem_envios: "Concluído sem envios",
   };
   return labels[status] ?? status;
+}
+
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
 }
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {

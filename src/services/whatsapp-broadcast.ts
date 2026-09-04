@@ -7,13 +7,13 @@ import {
   WHATSAPP_BROADCAST_MIN_DELAY_SECONDS,
 } from "@/config/whatsapp-broadcast";
 import { prisma } from "@/lib/prisma";
-import { checkEvolutionWhatsAppNumber, sendEvolutionTextMessage } from "@/services/evolution";
+import { checkEvolutionWhatsAppNumber, sendEvolutionMediaMessage, sendEvolutionTextMessage } from "@/services/evolution";
 
 const BROADCAST_HISTORY_KEY = "whatsappBroadcastDispatches";
 
 export type BroadcastRecipientStatus = {
   phone: string;
-  status: "agendado" | "processando" | "enviado" | "sem_whatsapp" | "falha_validacao" | "falha_envio" | "auto_pausado";
+  status: "agendado" | "processando" | "enviado" | "sem_whatsapp" | "falha_validacao" | "falha_envio" | "auto_pausado" | "cancelado";
   error: string | null;
   checkedAt: string | null;
   sentAt: string | null;
@@ -26,6 +26,10 @@ export type BroadcastDispatchRecord = {
   batchId: string;
   title: string;
   message: string;
+  media?: string;
+  mediaKind?: "imagem";
+  mimeType?: string;
+  fileName?: string;
   status: string;
   ownerUserId?: string;
   total: number;
@@ -48,25 +52,38 @@ export type BroadcastProcessMessage = {
   dispatchId: string;
   phone: string;
   message: string;
+  media?: string;
+  mediaKind?: "imagem";
+  mimeType?: string;
+  fileName?: string;
   ownerUserId?: string;
 };
 
 export function createBroadcastDispatch(input: {
   batchId: string;
   message: string;
+  media?: string;
+  mediaKind?: "imagem";
+  mimeType?: string;
+  fileName?: string;
   phones: string[];
   invalidPhones: string[];
   duplicatePhones: string[];
   scheduleBlocks: BroadcastScheduleBlock[];
+  sendNow?: boolean;
   ownerUserId?: string;
 }) {
   const now = new Date().toISOString();
-  const scheduledRecipients = buildRecipientSchedule(input.phones, input.scheduleBlocks);
+  const scheduledRecipients = buildRecipientSchedule(input.phones, input.sendNow ? [] : input.scheduleBlocks, input.sendNow);
   return {
     id: crypto.randomUUID(),
     batchId: input.batchId,
     title: `Disparo em lote ${new Date().toLocaleDateString("pt-BR")}`,
     message: input.message,
+    media: input.media,
+    mediaKind: input.mediaKind,
+    mimeType: input.mimeType,
+    fileName: input.fileName,
     status: "agendado",
     ownerUserId: input.ownerUserId,
     total: input.phones.length + input.invalidPhones.length + input.duplicatePhones.length,
@@ -89,6 +106,7 @@ export function createBroadcastDispatch(input: {
       invalidPhones: input.invalidPhones,
       duplicatePhones: input.duplicatePhones,
       scheduleBlocks: input.scheduleBlocks,
+      sendNow: Boolean(input.sendNow),
       minDelaySeconds: WHATSAPP_BROADCAST_MIN_DELAY_SECONDS,
       maxDelaySeconds: WHATSAPP_BROADCAST_MAX_DELAY_SECONDS,
     },
@@ -104,11 +122,50 @@ export async function saveBroadcastDispatch(dispatch: BroadcastDispatchRecord) {
   await writeBroadcastHistory([dispatch, ...history.filter((item) => item.id !== dispatch.id)].slice(0, 20));
 }
 
+export async function deleteBroadcastDispatches(ids?: string[]) {
+  const history = await readBroadcastHistory();
+  if (!ids?.length) {
+    await writeBroadcastHistory([]);
+    return { deleted: history.length };
+  }
+  const idSet = new Set(ids);
+  const nextHistory = history.filter((dispatch) => !idSet.has(dispatch.id));
+  await writeBroadcastHistory(nextHistory);
+  return { deleted: history.length - nextHistory.length };
+}
+
+export async function cancelBroadcastDispatches(ids: string[]) {
+  const idSet = new Set(ids);
+  const history = await readBroadcastHistory();
+  let canceled = 0;
+  const nextHistory = history.map((dispatch) => {
+    if (!idSet.has(dispatch.id)) return dispatch;
+    canceled += 1;
+    return {
+      ...dispatch,
+      status: "cancelado",
+      updatedAt: new Date().toISOString(),
+      recipientStatuses: dispatch.recipientStatuses.map((recipient) =>
+        recipient.status === "agendado" || recipient.status === "processando"
+          ? {
+              ...recipient,
+              status: "cancelado" as const,
+              error: "Agendamento cancelado manualmente.",
+              checkedAt: recipient.checkedAt ?? new Date().toISOString(),
+            }
+          : recipient,
+      ),
+    };
+  });
+  await writeBroadcastHistory(nextHistory);
+  return { canceled };
+}
+
 export async function processDueBroadcasts(limit = 5) {
   const now = Date.now();
   const history = await readBroadcastHistory();
   const dueMessages = history.flatMap((dispatch) => {
-    if (["concluido", "concluido_parcial", "concluido_sem_envios", "auto_pausado"].includes(dispatch.status)) return [];
+    if (["concluido", "concluido_parcial", "concluido_sem_envios", "auto_pausado", "cancelado"].includes(dispatch.status)) return [];
     return dispatch.recipientStatuses
       .filter((recipient) => recipient.status === "agendado")
       .filter((recipient) => !recipient.scheduledFor || new Date(recipient.scheduledFor).getTime() <= now)
@@ -116,6 +173,10 @@ export async function processDueBroadcasts(limit = 5) {
         dispatchId: dispatch.id,
         phone: recipient.phone,
         message: dispatch.message,
+        media: dispatch.media,
+        mediaKind: dispatch.mediaKind,
+        mimeType: dispatch.mimeType,
+        fileName: dispatch.fileName,
         ownerUserId: dispatch.ownerUserId,
         scheduledFor: recipient.scheduledFor,
       }));
@@ -169,7 +230,16 @@ export async function processBroadcastMessage(message: BroadcastProcessMessage) 
   }
 
   try {
-    const result = await sendEvolutionTextMessage({ to: message.phone, message: message.message, delayTypingSeconds: 2 });
+    const result = message.media && message.mediaKind
+      ? await sendEvolutionMediaMessage({
+          to: message.phone,
+          media: message.media,
+          kind: message.mediaKind,
+          caption: message.message,
+          mimeType: message.mimeType,
+          fileName: message.fileName,
+        })
+      : await sendEvolutionTextMessage({ to: message.phone, message: message.message, delayTypingSeconds: 2 });
     const providerId = resolveEvolutionMessageId(result);
     const conversation = await findOrCreateBroadcastConversation({
       phone: message.phone,
@@ -179,10 +249,15 @@ export async function processBroadcastMessage(message: BroadcastProcessMessage) 
       data: {
         conversationId: conversation.id,
         direction: "outbound",
-        body: message.message,
+        body: message.media ? `Imagem enviada${message.message ? `\n${message.message}` : ""}` : message.message,
         providerId,
         sentAt: new Date(),
-        rawPayload: normalizeJson({ provider: "evolution", source: "broadcast", result }),
+        rawPayload: normalizeJson({
+          provider: "evolution",
+          source: "broadcast",
+          media: message.media ? { kind: message.mediaKind, mimeType: message.mimeType, fileName: message.fileName } : undefined,
+          result,
+        }),
       },
     });
     await prisma.chatConversation.update({
@@ -257,6 +332,10 @@ function normalizeBroadcastHistory(value: unknown): BroadcastDispatchRecord[] {
       batchId: String(entry.batchId ?? id),
       title: String(entry.title ?? "Disparo em lote"),
       message: String(entry.message ?? ""),
+      media: typeof entry.media === "string" ? entry.media : undefined,
+      mediaKind: entry.mediaKind === "imagem" ? "imagem" : undefined,
+      mimeType: typeof entry.mimeType === "string" ? entry.mimeType : undefined,
+      fileName: typeof entry.fileName === "string" ? entry.fileName : undefined,
       status: String(entry.status ?? "agendado"),
       ownerUserId: typeof entry.ownerUserId === "string" ? entry.ownerUserId : undefined,
       total: Number(entry.total ?? 0),
@@ -299,7 +378,8 @@ function normalizeBroadcastStatus(value: unknown): BroadcastRecipientStatus["sta
     value === "sem_whatsapp" ||
     value === "falha_validacao" ||
     value === "falha_envio" ||
-    value === "auto_pausado"
+    value === "auto_pausado" ||
+    value === "cancelado"
   ) {
     return value;
   }
@@ -315,6 +395,7 @@ function summarizeStatuses(entries: BroadcastRecipientStatus[]) {
     if (item.status === "falha_validacao") summary.falhaValidacao += 1;
     if (item.status === "falha_envio") summary.falhaEnvio += 1;
     if (item.status === "auto_pausado") summary.autoPausado += 1;
+    if (item.status === "cancelado") summary.cancelado += 1;
     return summary;
   }, {
     agendado: 0,
@@ -324,10 +405,12 @@ function summarizeStatuses(entries: BroadcastRecipientStatus[]) {
     falhaValidacao: 0,
     falhaEnvio: 0,
     autoPausado: 0,
+    cancelado: 0,
   });
 }
 
 function resolveDispatchStatus(summary: ReturnType<typeof summarizeStatuses>) {
+  if (summary.cancelado > 0 && summary.agendado === 0 && summary.processando === 0) return "cancelado";
   if (summary.autoPausado > 0 && summary.agendado > 0) return "auto_pausado";
   if (summary.agendado > 0 || summary.processando > 0) return "agendado";
   if (summary.enviado > 0 && (summary.semWhatsapp > 0 || summary.falhaEnvio > 0 || summary.falhaValidacao > 0 || summary.autoPausado > 0)) return "concluido_parcial";
@@ -358,13 +441,17 @@ async function findOrCreateBroadcastConversation(input: { phone: string; ownerUs
   });
 }
 
-function buildRecipientSchedule(phones: string[], blocks: BroadcastScheduleBlock[]) {
+function buildRecipientSchedule(phones: string[], blocks: BroadcastScheduleBlock[], sendNow = false) {
   const normalizedBlocks = blocks
     .map((block) => ({
       time: normalizeTime(block.time),
       quantity: Math.max(0, Math.floor(Number(block.quantity) || 0)),
     }))
     .filter((block) => block.time && block.quantity > 0);
+  if (sendNow) {
+    return buildImmediateRecipientSchedule(phones);
+  }
+
   const fallbackBlocks = normalizedBlocks.length ? normalizedBlocks : [{ time: currentBrazilTime(), quantity: phones.length }];
   const scheduled: Array<{ phone: string; scheduledFor: string; blockLabel: string }> = [];
   let cursor = 0;
@@ -397,6 +484,23 @@ function buildRecipientSchedule(phones: string[], blocks: BroadcastScheduleBlock
     cursor += 1;
   }
 
+  return scheduled;
+}
+
+function buildImmediateRecipientSchedule(phones: string[]) {
+  const scheduled: Array<{ phone: string; scheduledFor: string; blockLabel: string }> = [];
+  let previousAt = new Date();
+  for (const [index, phone] of phones.entries()) {
+    const scheduledAt = index === 0
+      ? new Date(previousAt)
+      : new Date(previousAt.getTime() + randomBroadcastDelaySeconds() * 1000);
+    scheduled.push({
+      phone,
+      scheduledFor: scheduledAt.toISOString(),
+      blockLabel: "Agora",
+    });
+    previousAt = scheduledAt;
+  }
   return scheduled;
 }
 

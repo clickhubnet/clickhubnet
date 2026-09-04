@@ -5,13 +5,17 @@ import { authErrorResponse } from "@/lib/api-errors";
 import { errorResponse, successResponse } from "@/lib/api-response";
 import { requireCurrentUser } from "@/lib/auth-context";
 import { assertPermission } from "@/lib/permissions";
-import { createBroadcastDispatch, listBroadcastDispatches, saveBroadcastDispatch, type BroadcastScheduleBlock } from "@/services/whatsapp-broadcast";
+import { cancelBroadcastDispatches, createBroadcastDispatch, deleteBroadcastDispatches, listBroadcastDispatches, saveBroadcastDispatch, type BroadcastScheduleBlock } from "@/services/whatsapp-broadcast";
 import { parsePhoneList } from "@/services/validators";
 
 type BroadcastBody = {
   phones?: string;
   message?: string;
+  media?: string;
+  mimeType?: string;
+  fileName?: string;
   scheduleBlocks?: BroadcastScheduleBlock[];
+  sendNow?: boolean;
 };
 
 export async function GET() {
@@ -33,20 +37,22 @@ export async function POST(request: Request) {
     assertPermission(user, permissions.conversationsView);
     const body = await request.json().catch(() => null) as BroadcastBody | null;
     const message = String(body?.message ?? "").trim();
+    const media = String(body?.media ?? "").trim();
     const scheduleBlocks = Array.isArray(body?.scheduleBlocks) ? body.scheduleBlocks : [];
+    const sendNow = body?.sendNow === true;
     const parsedPhones = parsePhoneList(String(body?.phones ?? ""));
     const validPhones = parsedPhones.filter((item) => item.valid);
     const invalidPhones = parsedPhones.filter((item) => !item.valid).map((item) => item.raw);
 
-    if (!message) {
-      return NextResponse.json(errorResponse("Mensagem obrigatoria.", "VALIDATION_ERROR"), { status: 422 });
+    if (!message && !media) {
+      return NextResponse.json(errorResponse("Mensagem ou imagem obrigatoria.", "VALIDATION_ERROR"), { status: 422 });
     }
 
     if (!validPhones.length) {
       return NextResponse.json(errorResponse("Informe ao menos um numero valido.", "VALIDATION_ERROR"), { status: 422 });
     }
 
-    if (!scheduleBlocks.length || scheduleBlocks.every((block) => !block.time || !Number(block.quantity))) {
+    if (!sendNow && (!scheduleBlocks.length || scheduleBlocks.every((block) => !block.time || !Number(block.quantity)))) {
       return NextResponse.json(errorResponse("Informe ao menos um horario e quantidade para o disparo.", "VALIDATION_ERROR"), { status: 422 });
     }
 
@@ -72,10 +78,15 @@ export async function POST(request: Request) {
     const dispatch = createBroadcastDispatch({
       batchId,
       message,
+      media: media || undefined,
+      mediaKind: media ? "imagem" : undefined,
+      mimeType: body?.mimeType,
+      fileName: body?.fileName,
       phones,
       invalidPhones,
       duplicatePhones,
       scheduleBlocks,
+      sendNow,
       ownerUserId: user.id,
     });
     await saveBroadcastDispatch(dispatch);
@@ -86,7 +97,8 @@ export async function POST(request: Request) {
       totalValidPhones: phones.length,
       totalInvalidPhones: invalidPhones.length,
       totalDuplicatePhones: duplicatePhones.length,
-      scheduled: true,
+      scheduled: !sendNow,
+      sendNow,
     }), { status: 202 });
   } catch (error) {
     const authError = authErrorResponse(error);
@@ -95,5 +107,37 @@ export async function POST(request: Request) {
       errorResponse(error instanceof Error ? error.message : "Nao foi possivel iniciar o disparo.", "BROADCAST_ERROR"),
       { status: 500 },
     );
+  }
+}
+
+export async function PUT(request: Request) {
+  try {
+    const user = await requireCurrentUser();
+    assertPermission(user, permissions.conversationsView);
+    const body = await request.json().catch(() => ({})) as { ids?: string[]; action?: string };
+    const ids = Array.isArray(body.ids) ? body.ids.filter((id) => typeof id === "string" && id.trim()) : [];
+    if (body.action !== "cancel" || !ids.length) {
+      return NextResponse.json(errorResponse("Informe os agendamentos para cancelar.", "VALIDATION_ERROR"), { status: 422 });
+    }
+    const result = await cancelBroadcastDispatches(ids);
+    return NextResponse.json(successResponse("Agendamento cancelado.", result));
+  } catch (error) {
+    const authError = authErrorResponse(error);
+    if (authError) return authError;
+    return NextResponse.json(errorResponse("Nao foi possivel cancelar o agendamento."), { status: 500 });
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const user = await requireCurrentUser();
+    assertPermission(user, permissions.conversationsView);
+    const body = await request.json().catch(() => ({})) as { ids?: string[]; all?: boolean };
+    const result = await deleteBroadcastDispatches(body.all ? undefined : body.ids);
+    return NextResponse.json(successResponse("Historico de disparos excluido.", result));
+  } catch (error) {
+    const authError = authErrorResponse(error);
+    if (authError) return authError;
+    return NextResponse.json(errorResponse("Nao foi possivel excluir o historico."), { status: 500 });
   }
 }

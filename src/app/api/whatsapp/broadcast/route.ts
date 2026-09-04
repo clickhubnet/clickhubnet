@@ -5,7 +5,7 @@ import { authErrorResponse } from "@/lib/api-errors";
 import { errorResponse, successResponse } from "@/lib/api-response";
 import { requireCurrentUser } from "@/lib/auth-context";
 import { assertPermission } from "@/lib/permissions";
-import { cancelBroadcastDispatches, createBroadcastDispatch, deleteBroadcastDispatches, listBroadcastDispatches, saveBroadcastDispatch, type BroadcastScheduleBlock } from "@/services/whatsapp-broadcast";
+import { cancelBroadcastDispatches, createBroadcastDispatch, deleteBroadcastDispatches, listBroadcastDispatches, processDueBroadcasts, saveBroadcastDispatch, type BroadcastScheduleBlock } from "@/services/whatsapp-broadcast";
 import { parsePhoneList } from "@/services/validators";
 
 type BroadcastBody = {
@@ -22,6 +22,7 @@ export async function GET() {
   try {
     const user = await requireCurrentUser();
     assertPermission(user, permissions.conversationsView);
+    await processDueBroadcasts(3);
     const records = await listBroadcastDispatches();
     return NextResponse.json(successResponse("Historico de disparos consultado.", records));
   } catch (error) {
@@ -90,6 +91,7 @@ export async function POST(request: Request) {
       ownerUserId: user.id,
     });
     await saveBroadcastDispatch(dispatch);
+    const processed = await processDueBroadcasts(sendNow ? 1 : 3);
 
     return NextResponse.json(successResponse("Disparo em lote agendado.", {
       id: dispatch.id,
@@ -99,6 +101,7 @@ export async function POST(request: Request) {
       totalDuplicatePhones: duplicatePhones.length,
       scheduled: !sendNow,
       sendNow,
+      processed,
     }), { status: 202 });
   } catch (error) {
     const authError = authErrorResponse(error);

@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { Ban, MessageCircle, Phone, Plus, RefreshCw, Send, Tag, Trash2, X } from "lucide-react";
+import { Ban, MessageCircle, Phone, Plus, RefreshCw, Send, Tag, Trash2, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -38,6 +38,13 @@ type NewConversationState = {
   bulkMode: boolean;
   phones: string;
   bulkMessage: string;
+  scheduleBlocks: ScheduleBlock[];
+};
+
+type ScheduleBlock = {
+  id: string;
+  time: string;
+  quantity: string;
 };
 
 const emptyNewConversation: NewConversationState = {
@@ -46,6 +53,16 @@ const emptyNewConversation: NewConversationState = {
   bulkMode: false,
   phones: "",
   bulkMessage: "",
+  scheduleBlocks: [
+    { id: "slot-0900", time: "09:00", quantity: "25" },
+    { id: "slot-1010", time: "10:10", quantity: "30" },
+    { id: "slot-1130", time: "11:30", quantity: "20" },
+    { id: "slot-1320", time: "13:20", quantity: "30" },
+    { id: "slot-1440", time: "14:40", quantity: "25" },
+    { id: "slot-1610", time: "16:10", quantity: "30" },
+    { id: "slot-1730", time: "17:30", quantity: "20" },
+    { id: "slot-1900", time: "19:00", quantity: "25" },
+  ],
 };
 
 type BroadcastDispatch = {
@@ -65,6 +82,8 @@ type BroadcastDispatch = {
     error: string | null;
     checkedAt: string | null;
     sentAt: string | null;
+    scheduledFor: string | null;
+    blockLabel: string | null;
   }>;
   createdAt: string;
   updatedAt: string;
@@ -94,6 +113,9 @@ export function ConversationsPanel() {
   const availableTags = useMemo(() => {
     return Array.from(new Set(conversations.flatMap((conversation) => getConversationTags(conversation)))).sort((a, b) => a.localeCompare(b));
   }, [conversations]);
+  const bulkPhoneCount = useMemo(() => countBulkPhones(newConversation.phones), [newConversation.phones]);
+  const scheduledQuantity = useMemo(() => sumScheduleQuantity(newConversation.scheduleBlocks), [newConversation.scheduleBlocks]);
+  const remainingToSchedule = bulkPhoneCount - scheduledQuantity;
 
   async function refreshConversations(nextActiveId?: string) {
     setError("");
@@ -145,6 +167,10 @@ export function ConversationsPanel() {
         body: JSON.stringify({
           phones: newConversation.phones,
           message: newConversation.bulkMessage,
+          scheduleBlocks: newConversation.scheduleBlocks.map((block) => ({
+            time: block.time,
+            quantity: Number(block.quantity) || 0,
+          })),
         }),
       });
       const result = await response.json() as ApiResult<{ id: string }>;
@@ -183,6 +209,50 @@ export function ConversationsPanel() {
     if (result.status === "success") {
       setBroadcastHistory(result.data);
     }
+  }
+
+  async function handleBulkFileChange(file?: File | null) {
+    if (!file) return;
+    setError("");
+    try {
+      const extension = file.name.split(".").pop()?.toLowerCase();
+      if (extension === "csv" || file.type.includes("csv")) {
+        const text = await file.text();
+        setNewConversation((current) => ({ ...current, phones: mergePhoneText(current.phones, text) }));
+        return;
+      }
+
+      const buffer = await file.arrayBuffer();
+      const XLSX = await import("xlsx");
+      const workbook = XLSX.read(buffer, { type: "array" });
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json<unknown[]>(worksheet, { header: 1, defval: "" });
+      const extracted = extractPhoneTextFromRows(rows);
+      setNewConversation((current) => ({ ...current, phones: mergePhoneText(current.phones, extracted) }));
+    } catch {
+      setError("Nao foi possivel ler a planilha. Use .xlsx, .xls ou .csv.");
+    }
+  }
+
+  function updateScheduleBlock(id: string, patch: Partial<ScheduleBlock>) {
+    setNewConversation((current) => ({
+      ...current,
+      scheduleBlocks: current.scheduleBlocks.map((block) => block.id === id ? { ...block, ...patch } : block),
+    }));
+  }
+
+  function addScheduleBlock() {
+    setNewConversation((current) => ({
+      ...current,
+      scheduleBlocks: [...current.scheduleBlocks, { id: `slot-${Date.now()}`, time: "09:00", quantity: "20" }],
+    }));
+  }
+
+  function removeScheduleBlock(id: string) {
+    setNewConversation((current) => ({
+      ...current,
+      scheduleBlocks: current.scheduleBlocks.filter((block) => block.id !== id),
+    }));
   }
 
   async function handleSendMessage(event: FormEvent<HTMLFormElement>) {
@@ -493,11 +563,21 @@ export function ConversationsPanel() {
 
             {newConversation.bulkMode ? (
               <>
+                <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-blue-400/30 bg-blue-500/5 p-4 text-sm font-medium text-blue-100 transition hover:bg-blue-500/10">
+                  <Upload className="h-4 w-4" />
+                  Subir planilha .xlsx, .xls ou .csv
+                  <input
+                    className="hidden"
+                    type="file"
+                    accept=".xlsx,.xls,.csv"
+                    onChange={(event) => void handleBulkFileChange(event.target.files?.[0])}
+                  />
+                </label>
                 <Textarea
                   className="min-h-32"
                   value={newConversation.phones}
                   onChange={(event) => setNewConversation((current) => ({ ...current, phones: event.target.value }))}
-                  placeholder={"5511978140022\n5511999999999\nUm número por linha"}
+                  placeholder={"Ou cole aqui:\n5511978140022\n5511999999999\nUm número por linha"}
                   required
                 />
                 <Textarea
@@ -507,8 +587,56 @@ export function ConversationsPanel() {
                   placeholder="Mensagem do disparo"
                   required
                 />
+                <div className="rounded-xl border border-blue-400/15 bg-blue-500/5 p-3">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold">Agenda dos disparos</p>
+                      <p className="text-xs text-muted-foreground">Cada bloco usa a mesma lista e envia um por um com intervalo aleatório.</p>
+                    </div>
+                    <Button size="sm" variant="outline" type="button" onClick={addScheduleBlock}>
+                      <Plus className="h-3.5 w-3.5" />
+                      Bloco
+                    </Button>
+                  </div>
+                  <div className="space-y-2">
+                    {newConversation.scheduleBlocks.map((block, index) => (
+                      <div key={block.id} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                        <Input
+                          type="time"
+                          value={block.time}
+                          onChange={(event) => updateScheduleBlock(block.id, { time: event.target.value })}
+                          aria-label={`Horario do bloco ${index + 1}`}
+                        />
+                        <Input
+                          inputMode="numeric"
+                          value={block.quantity}
+                          onChange={(event) => updateScheduleBlock(block.id, { quantity: event.target.value.replace(/\D/g, "") })}
+                          placeholder="Qtd."
+                          aria-label={`Quantidade do bloco ${index + 1}`}
+                        />
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          type="button"
+                          onClick={() => removeScheduleBlock(block.id)}
+                          disabled={newConversation.scheduleBlocks.length === 1}
+                          aria-label="Remover bloco"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
+                    <p className="rounded-lg bg-slate-950/40 p-2">Contatos: <span className="font-semibold text-slate-100">{bulkPhoneCount}</span></p>
+                    <p className="rounded-lg bg-slate-950/40 p-2">Programados: <span className="font-semibold text-slate-100">{scheduledQuantity}</span></p>
+                    <p className={`rounded-lg p-2 ${remainingToSchedule === 0 ? "bg-emerald-500/10 text-emerald-200" : remainingToSchedule > 0 ? "bg-amber-500/10 text-amber-200" : "bg-red-500/10 text-red-200"}`}>
+                      {remainingToSchedule === 0 ? "Fechou certinho" : remainingToSchedule > 0 ? `Sobra: ${remainingToSchedule}` : `Excedeu: ${Math.abs(remainingToSchedule)}`}
+                    </p>
+                  </div>
+                </div>
                 <p className="text-xs text-muted-foreground">
-                  O envio roda em segundo plano, valida WhatsApp na Evolution e registra o status por número.
+                  O cron da Vercel processa automaticamente os horários. Dentro de cada bloco, os números saem entre 60 e 140 segundos por padrão.
                 </p>
               </>
             ) : (
@@ -563,7 +691,7 @@ export function ConversationsPanel() {
                         {item.recipientStatuses.slice(0, 20).map((recipient) => (
                           <p key={`${item.id}-${recipient.phone}`} className="flex justify-between gap-2">
                             <span>{recipient.phone}</span>
-                            <span>{formatBroadcastStatus(recipient.status)}</span>
+                            <span>{formatBroadcastStatus(recipient.status)}{recipient.scheduledFor ? ` · ${formatTime(recipient.scheduledFor)}` : ""}</span>
                           </p>
                         ))}
                       </div>
@@ -600,6 +728,13 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
+function formatTime(value: string) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
 function getLastMessage(conversation: ChatConversation) {
   return [...conversation.messages].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()).at(-1);
 }
@@ -622,6 +757,46 @@ function isConversationBlocked(conversation?: ChatConversation) {
 
 function normalizeTags(tags: string[]) {
   return Array.from(new Set(tags.map((tag) => tag.trim()).filter(Boolean)));
+}
+
+function sumScheduleQuantity(blocks: ScheduleBlock[]) {
+  return blocks.reduce((total, block) => total + (Number(block.quantity) || 0), 0);
+}
+
+function countBulkPhones(value: string) {
+  return extractPhoneCandidates(value).length;
+}
+
+function mergePhoneText(current: string, next: string) {
+  const currentLines = current.split(/\n+/).map((item) => item.trim()).filter(Boolean);
+  const nextLines = extractPhoneCandidates(next);
+  return [...currentLines, ...nextLines].join("\n");
+}
+
+function extractPhoneTextFromRows(rows: unknown[][]) {
+  const headers = rows[0]?.map((cell) => String(cell ?? "").toLowerCase().trim()) ?? [];
+  const preferredColumn = headers.findIndex((header) => ["telefone", "whatsapp", "celular", "numero", "número", "phone"].some((keyword) => header.includes(keyword)));
+  const values = rows.flatMap((row, rowIndex) => {
+    if (rowIndex === 0 && preferredColumn >= 0) return [];
+    if (preferredColumn >= 0) return [String(row[preferredColumn] ?? "")];
+    return row.map((cell) => String(cell ?? ""));
+  });
+  return extractPhoneCandidates(values.join("\n")).join("\n");
+}
+
+function extractPhoneCandidates(value: string) {
+  return value
+    .split(/[\n,;|\t]+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => item.replace(/\D/g, ""))
+    .map((digits) => {
+      if (digits.startsWith("55") && (digits.length === 12 || digits.length === 13)) return digits;
+      const withoutZeros = digits.replace(/^0+/, "");
+      if (withoutZeros.length === 10 || withoutZeros.length === 11) return `55${withoutZeros}`;
+      return withoutZeros;
+    })
+    .filter((digits) => /^55\d{10,11}$/.test(digits));
 }
 
 function TagList({ tags, compact = false, onRemove }: { tags: string[]; compact?: boolean; onRemove?: (tag: string) => void }) {

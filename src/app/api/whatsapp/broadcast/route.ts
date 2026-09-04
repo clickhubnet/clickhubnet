@@ -1,16 +1,17 @@
-import { after, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { WHATSAPP_BROADCAST_MAX_BATCH_SIZE } from "@/config/whatsapp-broadcast";
 import { permissions } from "@/constants/permissions";
 import { authErrorResponse } from "@/lib/api-errors";
 import { errorResponse, successResponse } from "@/lib/api-response";
 import { requireCurrentUser } from "@/lib/auth-context";
 import { assertPermission } from "@/lib/permissions";
-import { createBroadcastDispatch, listBroadcastDispatches, processBroadcastInBackground, saveBroadcastDispatch } from "@/services/whatsapp-broadcast";
+import { createBroadcastDispatch, listBroadcastDispatches, saveBroadcastDispatch, type BroadcastScheduleBlock } from "@/services/whatsapp-broadcast";
 import { parsePhoneList } from "@/services/validators";
 
 type BroadcastBody = {
   phones?: string;
   message?: string;
+  scheduleBlocks?: BroadcastScheduleBlock[];
 };
 
 export async function GET() {
@@ -32,6 +33,7 @@ export async function POST(request: Request) {
     assertPermission(user, permissions.conversationsView);
     const body = await request.json().catch(() => null) as BroadcastBody | null;
     const message = String(body?.message ?? "").trim();
+    const scheduleBlocks = Array.isArray(body?.scheduleBlocks) ? body.scheduleBlocks : [];
     const parsedPhones = parsePhoneList(String(body?.phones ?? ""));
     const validPhones = parsedPhones.filter((item) => item.valid);
     const invalidPhones = parsedPhones.filter((item) => !item.valid).map((item) => item.raw);
@@ -42,6 +44,10 @@ export async function POST(request: Request) {
 
     if (!validPhones.length) {
       return NextResponse.json(errorResponse("Informe ao menos um numero valido.", "VALIDATION_ERROR"), { status: 422 });
+    }
+
+    if (!scheduleBlocks.length || scheduleBlocks.every((block) => !block.time || !Number(block.quantity))) {
+      return NextResponse.json(errorResponse("Informe ao menos um horario e quantidade para o disparo.", "VALIDATION_ERROR"), { status: 422 });
     }
 
     const seenPhones = new Set<string>();
@@ -69,23 +75,18 @@ export async function POST(request: Request) {
       phones,
       invalidPhones,
       duplicatePhones,
+      scheduleBlocks,
       ownerUserId: user.id,
     });
     await saveBroadcastDispatch(dispatch);
 
-    after(() => processBroadcastInBackground(phones.map((phone) => ({
-      dispatchId: dispatch.id,
-      phone,
-      message,
-      ownerUserId: user.id,
-    }))));
-
-    return NextResponse.json(successResponse("Disparo em lote iniciado em segundo plano.", {
+    return NextResponse.json(successResponse("Disparo em lote agendado.", {
       id: dispatch.id,
       batchId,
       totalValidPhones: phones.length,
       totalInvalidPhones: invalidPhones.length,
       totalDuplicatePhones: duplicatePhones.length,
+      scheduled: true,
     }), { status: 202 });
   } catch (error) {
     const authError = authErrorResponse(error);

@@ -17,6 +17,8 @@ export type BroadcastRecipientStatus = {
   error: string | null;
   checkedAt: string | null;
   sentAt: string | null;
+  scheduledFor: string | null;
+  blockLabel: string | null;
 };
 
 export type BroadcastDispatchRecord = {
@@ -37,6 +39,11 @@ export type BroadcastDispatchRecord = {
   metadata: Record<string, unknown>;
 };
 
+export type BroadcastScheduleBlock = {
+  time: string;
+  quantity: number;
+};
+
 export type BroadcastProcessMessage = {
   dispatchId: string;
   phone: string;
@@ -50,33 +57,40 @@ export function createBroadcastDispatch(input: {
   phones: string[];
   invalidPhones: string[];
   duplicatePhones: string[];
+  scheduleBlocks: BroadcastScheduleBlock[];
   ownerUserId?: string;
 }) {
   const now = new Date().toISOString();
+  const scheduledRecipients = buildRecipientSchedule(input.phones, input.scheduleBlocks);
   return {
     id: crypto.randomUUID(),
     batchId: input.batchId,
     title: `Disparo em lote ${new Date().toLocaleDateString("pt-BR")}`,
     message: input.message,
-    status: "processando",
+    status: "agendado",
     ownerUserId: input.ownerUserId,
     total: input.phones.length + input.invalidPhones.length + input.duplicatePhones.length,
     sent: 0,
     failed: 0,
     invalid: input.invalidPhones.length,
     duplicate: input.duplicatePhones.length,
-    recipientStatuses: input.phones.map((phone) => ({
-      phone,
+    recipientStatuses: scheduledRecipients.map((recipient) => ({
+      phone: recipient.phone,
       status: "agendado",
       error: null,
       checkedAt: null,
       sentAt: null,
+      scheduledFor: recipient.scheduledFor,
+      blockLabel: recipient.blockLabel,
     })),
     createdAt: now,
     updatedAt: now,
     metadata: {
       invalidPhones: input.invalidPhones,
       duplicatePhones: input.duplicatePhones,
+      scheduleBlocks: input.scheduleBlocks,
+      minDelaySeconds: WHATSAPP_BROADCAST_MIN_DELAY_SECONDS,
+      maxDelaySeconds: WHATSAPP_BROADCAST_MAX_DELAY_SECONDS,
     },
   } satisfies BroadcastDispatchRecord;
 }
@@ -90,15 +104,30 @@ export async function saveBroadcastDispatch(dispatch: BroadcastDispatchRecord) {
   await writeBroadcastHistory([dispatch, ...history.filter((item) => item.id !== dispatch.id)].slice(0, 20));
 }
 
-export async function processBroadcastInBackground(messages: BroadcastProcessMessage[]) {
-  for (const item of messages) {
-    await sleep(randomBroadcastDelaySeconds() * 1000);
-    try {
-      await processBroadcastMessage(item);
-    } catch {
-      // O erro individual ja fica salvo no historico. O lote continua para os proximos contatos.
-    }
+export async function processDueBroadcasts(limit = 5) {
+  const now = Date.now();
+  const history = await readBroadcastHistory();
+  const dueMessages = history.flatMap((dispatch) => {
+    if (["concluido", "concluido_parcial", "concluido_sem_envios", "auto_pausado"].includes(dispatch.status)) return [];
+    return dispatch.recipientStatuses
+      .filter((recipient) => recipient.status === "agendado")
+      .filter((recipient) => !recipient.scheduledFor || new Date(recipient.scheduledFor).getTime() <= now)
+      .map((recipient) => ({
+        dispatchId: dispatch.id,
+        phone: recipient.phone,
+        message: dispatch.message,
+        ownerUserId: dispatch.ownerUserId,
+        scheduledFor: recipient.scheduledFor,
+      }));
+  }).sort((left, right) => {
+    return new Date(left.scheduledFor ?? 0).getTime() - new Date(right.scheduledFor ?? 0).getTime();
+  }).slice(0, limit);
+
+  for (const item of dueMessages) {
+    await processBroadcastMessage(item);
   }
+
+  return { processed: dueMessages.length };
 }
 
 export async function processBroadcastMessage(message: BroadcastProcessMessage) {
@@ -183,7 +212,6 @@ async function patchRecipientStatus(
   const history = await readBroadcastHistory();
   const nextHistory = history.map((dispatch) => {
     if (dispatch.id !== dispatchId) return dispatch;
-
     const recipientStatuses = dispatch.recipientStatuses.map((item) =>
       item.phone === phone ? { ...item, ...patch } : item,
     );
@@ -197,7 +225,6 @@ async function patchRecipientStatus(
       updatedAt: new Date().toISOString(),
     };
   });
-
   await writeBroadcastHistory(nextHistory);
 }
 
@@ -230,7 +257,7 @@ function normalizeBroadcastHistory(value: unknown): BroadcastDispatchRecord[] {
       batchId: String(entry.batchId ?? id),
       title: String(entry.title ?? "Disparo em lote"),
       message: String(entry.message ?? ""),
-      status: String(entry.status ?? "processando"),
+      status: String(entry.status ?? "agendado"),
       ownerUserId: typeof entry.ownerUserId === "string" ? entry.ownerUserId : undefined,
       total: Number(entry.total ?? 0),
       sent: Number(entry.sent ?? 0),
@@ -258,6 +285,8 @@ function normalizeRecipientStatuses(value: unknown): BroadcastRecipientStatus[] 
       error: typeof entry.error === "string" ? entry.error : null,
       checkedAt: typeof entry.checkedAt === "string" ? entry.checkedAt : null,
       sentAt: typeof entry.sentAt === "string" ? entry.sentAt : null,
+      scheduledFor: typeof entry.scheduledFor === "string" ? entry.scheduledFor : null,
+      blockLabel: typeof entry.blockLabel === "string" ? entry.blockLabel : null,
     }];
   });
 }
@@ -300,8 +329,8 @@ function summarizeStatuses(entries: BroadcastRecipientStatus[]) {
 
 function resolveDispatchStatus(summary: ReturnType<typeof summarizeStatuses>) {
   if (summary.autoPausado > 0 && summary.agendado > 0) return "auto_pausado";
-  if (summary.agendado > 0 || summary.processando > 0) return "processando";
-  if (summary.enviado > 0 && (summary.semWhatsapp > 0 || summary.falhaEnvio > 0 || summary.falhaValidacao > 0)) return "concluido_parcial";
+  if (summary.agendado > 0 || summary.processando > 0) return "agendado";
+  if (summary.enviado > 0 && (summary.semWhatsapp > 0 || summary.falhaEnvio > 0 || summary.falhaValidacao > 0 || summary.autoPausado > 0)) return "concluido_parcial";
   if (summary.enviado > 0) return "concluido";
   return "concluido_sem_envios";
 }
@@ -316,25 +345,100 @@ async function findOrCreateBroadcastConversation(input: { phone: string; ownerUs
   return prisma.chatConversation.create({
     data: {
       phone: input.phone,
-      state: "MANUAL",
+      state: "START",
       ownerUserId: input.ownerUserId,
       memory: {
         contactName: input.phone,
         assignedTo: "Equipe",
         tags: ["Disparo em lote"],
         source: "broadcast",
+        whatsapp: input.phone,
       },
     },
   });
 }
 
+function buildRecipientSchedule(phones: string[], blocks: BroadcastScheduleBlock[]) {
+  const normalizedBlocks = blocks
+    .map((block) => ({
+      time: normalizeTime(block.time),
+      quantity: Math.max(0, Math.floor(Number(block.quantity) || 0)),
+    }))
+    .filter((block) => block.time && block.quantity > 0);
+  const fallbackBlocks = normalizedBlocks.length ? normalizedBlocks : [{ time: currentBrazilTime(), quantity: phones.length }];
+  const scheduled: Array<{ phone: string; scheduledFor: string; blockLabel: string }> = [];
+  let cursor = 0;
+
+  for (const block of fallbackBlocks) {
+    const startAt = nextBrazilScheduleDate(block.time);
+    let previousAt = new Date(startAt);
+    for (let index = 0; index < block.quantity && cursor < phones.length; index += 1) {
+      const scheduledAt = index === 0
+        ? new Date(startAt)
+        : new Date(previousAt.getTime() + randomBroadcastDelaySeconds() * 1000);
+      scheduled.push({
+        phone: phones[cursor],
+        scheduledFor: scheduledAt.toISOString(),
+        blockLabel: `${block.time} · ${block.quantity}`,
+      });
+      previousAt = scheduledAt;
+      cursor += 1;
+    }
+  }
+
+  while (cursor < phones.length) {
+    const lastAt = scheduled.length ? new Date(scheduled[scheduled.length - 1].scheduledFor) : new Date();
+    const scheduledAt = new Date(lastAt.getTime() + randomBroadcastDelaySeconds() * 1000);
+    scheduled.push({
+      phone: phones[cursor],
+      scheduledFor: scheduledAt.toISOString(),
+      blockLabel: "Extra",
+    });
+    cursor += 1;
+  }
+
+  return scheduled;
+}
+
+function normalizeTime(value: string) {
+  const match = value.trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return "";
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return "";
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function nextBrazilScheduleDate(time: string) {
+  const [hours, minutes] = time.split(":").map(Number);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const year = Number(parts.find((part) => part.type === "year")?.value ?? new Date().getUTCFullYear());
+  const month = Number(parts.find((part) => part.type === "month")?.value ?? 1);
+  const day = Number(parts.find((part) => part.type === "day")?.value ?? 1);
+  let date = new Date(Date.UTC(year, month - 1, day, hours + 3, minutes, 0, 0));
+  if (date.getTime() < Date.now() - 60_000) {
+    date = new Date(date.getTime() + 24 * 60 * 60 * 1000);
+  }
+  return date;
+}
+
+function currentBrazilTime() {
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date());
+}
+
 function randomBroadcastDelaySeconds() {
   return WHATSAPP_BROADCAST_MIN_DELAY_SECONDS +
     Math.floor(Math.random() * (WHATSAPP_BROADCAST_MAX_DELAY_SECONDS - WHATSAPP_BROADCAST_MIN_DELAY_SECONDS + 1));
-}
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function resolveEvolutionMessageId(result: unknown) {

@@ -35,11 +35,39 @@ type ChatConversation = {
 type NewConversationState = {
   name: string;
   phone: string;
+  bulkMode: boolean;
+  phones: string;
+  bulkMessage: string;
 };
 
 const emptyNewConversation: NewConversationState = {
   name: "",
   phone: "",
+  bulkMode: false,
+  phones: "",
+  bulkMessage: "",
+};
+
+type BroadcastDispatch = {
+  id: string;
+  batchId: string;
+  title: string;
+  message: string;
+  status: string;
+  total: number;
+  sent: number;
+  failed: number;
+  invalid: number;
+  duplicate: number;
+  recipientStatuses: Array<{
+    phone: string;
+    status: string;
+    error: string | null;
+    checkedAt: string | null;
+    sentAt: string | null;
+  }>;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export function ConversationsPanel() {
@@ -49,6 +77,8 @@ export function ConversationsPanel() {
   const [message, setMessage] = useState("");
   const [newTag, setNewTag] = useState("");
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [broadcastHistory, setBroadcastHistory] = useState<BroadcastDispatch[]>([]);
+  const [submittingConversation, setSubmittingConversation] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [sending, setSending] = useState(false);
@@ -92,18 +122,51 @@ export function ConversationsPanel() {
   }, []);
 
   useEffect(() => {
+    if (!createModalOpen) return;
+    void refreshBroadcastHistory();
+    const interval = window.setInterval(() => void refreshBroadcastHistory(), 5000);
+    return () => window.clearInterval(interval);
+  }, [createModalOpen]);
+
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [active?.id, active?.messages.length]);
 
   async function handleCreateConversation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submittingConversation) return;
     setError("");
+    setSubmittingConversation(true);
+
+    if (newConversation.bulkMode) {
+      const response = await fetch("/api/whatsapp/broadcast", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phones: newConversation.phones,
+          message: newConversation.bulkMessage,
+        }),
+      });
+      const result = await response.json() as ApiResult<{ id: string }>;
+      setSubmittingConversation(false);
+      if (result.status !== "success") {
+        setError(result.message);
+        return;
+      }
+
+      setNewConversation(emptyNewConversation);
+      await refreshBroadcastHistory();
+      await refreshConversations();
+      return;
+    }
+
     const response = await fetch("/api/conversations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(newConversation),
     });
     const result = await response.json() as ApiResult<ChatConversation>;
+    setSubmittingConversation(false);
     if (result.status !== "success") {
       setError(result.message);
       return;
@@ -112,6 +175,14 @@ export function ConversationsPanel() {
     setNewConversation(emptyNewConversation);
     setCreateModalOpen(false);
     await refreshConversations(result.data.id);
+  }
+
+  async function refreshBroadcastHistory() {
+    const response = await fetch("/api/whatsapp/broadcast", { cache: "no-store" });
+    const result = await response.json() as ApiResult<BroadcastDispatch[]>;
+    if (result.status === "success") {
+      setBroadcastHistory(result.data);
+    }
   }
 
   async function handleSendMessage(event: FormEvent<HTMLFormElement>) {
@@ -403,22 +474,109 @@ export function ConversationsPanel() {
       {createModalOpen ? (
         <Modal title="Chamar novo número" onClose={() => setCreateModalOpen(false)}>
           <form className="space-y-3" onSubmit={handleCreateConversation}>
-            <Input
-              value={newConversation.name}
-              onChange={(event) => setNewConversation((current) => ({ ...current, name: event.target.value }))}
-              placeholder="Nome do contato"
-            />
-            <Input
-              value={newConversation.phone}
-              onChange={(event) => setNewConversation((current) => ({ ...current, phone: event.target.value }))}
-              placeholder="+5511999999999"
-              required
-            />
+            <div className="grid grid-cols-2 gap-2 rounded-xl border border-blue-400/15 bg-blue-500/5 p-1">
+              <button
+                type="button"
+                onClick={() => setNewConversation((current) => ({ ...current, bulkMode: false }))}
+                className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${!newConversation.bulkMode ? "bg-blue-600 text-white" : "text-muted-foreground hover:bg-blue-500/10"}`}
+              >
+                Unitário
+              </button>
+              <button
+                type="button"
+                onClick={() => setNewConversation((current) => ({ ...current, bulkMode: true }))}
+                className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${newConversation.bulkMode ? "bg-blue-600 text-white" : "text-muted-foreground hover:bg-blue-500/10"}`}
+              >
+                Disparo em lote
+              </button>
+            </div>
+
+            {newConversation.bulkMode ? (
+              <>
+                <Textarea
+                  className="min-h-32"
+                  value={newConversation.phones}
+                  onChange={(event) => setNewConversation((current) => ({ ...current, phones: event.target.value }))}
+                  placeholder={"5511978140022\n5511999999999\nUm número por linha"}
+                  required
+                />
+                <Textarea
+                  className="min-h-28"
+                  value={newConversation.bulkMessage}
+                  onChange={(event) => setNewConversation((current) => ({ ...current, bulkMessage: event.target.value }))}
+                  placeholder="Mensagem do disparo"
+                  required
+                />
+                <p className="text-xs text-muted-foreground">
+                  O envio roda em segundo plano, valida WhatsApp na Evolution e registra o status por número.
+                </p>
+              </>
+            ) : (
+              <>
+                <Input
+                  value={newConversation.name}
+                  onChange={(event) => setNewConversation((current) => ({ ...current, name: event.target.value }))}
+                  placeholder="Nome do contato"
+                />
+                <Input
+                  value={newConversation.phone}
+                  onChange={(event) => setNewConversation((current) => ({ ...current, phone: event.target.value }))}
+                  placeholder="+5511999999999"
+                  required={!newConversation.bulkMode}
+                />
+              </>
+            )}
             <Button className="w-full" type="submit">
               <Phone className="h-4 w-4" />
-              Iniciar conversa
+              {submittingConversation ? "Processando..." : newConversation.bulkMode ? "Iniciar disparo" : "Iniciar conversa"}
             </Button>
           </form>
+          {newConversation.bulkMode ? (
+            <div className="mt-5 border-t border-blue-400/15 pt-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h3 className="text-sm font-semibold">Histórico de disparos</h3>
+                <Button size="sm" variant="outline" type="button" onClick={() => void refreshBroadcastHistory()}>
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Atualizar
+                </Button>
+              </div>
+              <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
+                {broadcastHistory.length ? broadcastHistory.map((item) => (
+                  <div key={item.id} className="rounded-xl border border-blue-400/15 bg-blue-500/5 p-3 text-xs">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-sm">{item.title}</p>
+                        <p className="mt-1 text-muted-foreground">{formatDate(item.createdAt)} · {formatBroadcastStatus(item.status)}</p>
+                      </div>
+                      <span className="rounded-full bg-blue-500/15 px-2 py-1 font-semibold text-blue-200">
+                        {item.sent}/{Math.max(0, item.total - item.invalid - item.duplicate)}
+                      </span>
+                    </div>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-blue-950">
+                      <div className="h-full rounded-full bg-blue-500" style={{ width: `${getBroadcastProgress(item)}%` }} />
+                    </div>
+                    <p className="mt-2 text-muted-foreground">
+                      Enviados: {item.sent} · Falhas: {item.failed} · Inválidos: {item.invalid} · Duplicados: {item.duplicate}
+                    </p>
+                    {item.recipientStatuses?.length ? (
+                      <div className="mt-2 max-h-24 overflow-y-auto rounded-lg bg-slate-950/40 p-2">
+                        {item.recipientStatuses.slice(0, 20).map((recipient) => (
+                          <p key={`${item.id}-${recipient.phone}`} className="flex justify-between gap-2">
+                            <span>{recipient.phone}</span>
+                            <span>{formatBroadcastStatus(recipient.status)}</span>
+                          </p>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                )) : (
+                  <p className="rounded-xl border border-dashed border-blue-400/20 p-4 text-center text-sm text-muted-foreground">
+                    Nenhum disparo registrado ainda.
+                  </p>
+                )}
+              </div>
+            </div>
+          ) : null}
         </Modal>
       ) : null}
     </div>
@@ -547,10 +705,34 @@ function getLocalMessageStatus(message: ChatMessage) {
   return String((message.rawPayload as { status?: unknown }).status ?? "");
 }
 
+function getBroadcastProgress(item: BroadcastDispatch) {
+  const actionable = Math.max(1, item.total - item.invalid - item.duplicate);
+  const finished = item.recipientStatuses.filter((recipient) =>
+    ["enviado", "sem_whatsapp", "falha_validacao", "falha_envio", "auto_pausado"].includes(recipient.status),
+  ).length;
+  return Math.min(100, Math.round((finished / actionable) * 100));
+}
+
+function formatBroadcastStatus(status: string) {
+  const labels: Record<string, string> = {
+    agendado: "Agendado",
+    processando: "Processando",
+    enviado: "Enviado",
+    sem_whatsapp: "Sem WhatsApp",
+    falha_validacao: "Falha validação",
+    falha_envio: "Falha envio",
+    auto_pausado: "Pausado",
+    concluido: "Concluído",
+    concluido_parcial: "Concluído parcial",
+    concluido_sem_envios: "Concluído sem envios",
+  };
+  return labels[status] ?? status;
+}
+
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <div className="glass-panel neon-ring w-full max-w-md rounded-2xl shadow-2xl">
+      <div className="glass-panel neon-ring w-full max-w-2xl rounded-2xl shadow-2xl">
         <div className="flex items-center justify-between border-b border-blue-400/15 px-5 py-4">
           <h2 className="font-semibold">{title}</h2>
           <Button size="icon" variant="ghost" type="button" onClick={onClose} aria-label="Fechar">

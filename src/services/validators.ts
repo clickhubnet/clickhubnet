@@ -41,3 +41,18 @@ export function isValidBrazilianWhatsApp(value: string) {
   const normalized = normalizePhone(value);
   return /^55\d{10,11}$/.test(normalized);
 }
+
+export function parsePhoneList(value: string) {
+  return value
+    .split(/[\n,;]+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((raw) => {
+      const phone = normalizePhone(raw);
+      return {
+        raw,
+        phone,
+        valid: isValidBrazilianWhatsApp(phone),
+      };
+    });
+}

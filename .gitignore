@@ -9,3 +9,4 @@ coverage
 public/*.xls
 public/*.xlsx
 /logohub.png
+.vercel

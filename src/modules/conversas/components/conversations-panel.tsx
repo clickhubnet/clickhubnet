@@ -1205,15 +1205,15 @@ function readFileAsDataUrl(file: File) {
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <div className="glass-panel neon-ring w-full max-w-2xl rounded-2xl shadow-2xl">
-        <div className="flex items-center justify-between border-b border-blue-400/15 px-5 py-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-slate-950/60 p-4" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <div className="glass-panel neon-ring flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl shadow-2xl">
+        <div className="shrink-0 flex items-center justify-between border-b border-blue-400/15 px-5 py-4">
           <h2 className="font-semibold">{title}</h2>
           <Button size="icon" variant="ghost" type="button" onClick={onClose} aria-label="Fechar">
             <X className="h-5 w-5" />
           </Button>
         </div>
-        <div className="p-5">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-5 pr-3">{children}</div>
       </div>
     </div>
   );

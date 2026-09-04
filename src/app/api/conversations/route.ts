@@ -82,13 +82,15 @@ export async function DELETE(request: Request) {
   try {
     const user = await requireCurrentUser();
     assertPermission(user, permissions.conversationsView);
+    const { searchParams } = new URL(request.url);
     const body = await request.json().catch(() => ({})) as { id?: string };
-    if (!body.id) {
+    const id = searchParams.get("id")?.trim() || body.id?.trim();
+    if (!id) {
       return NextResponse.json(errorResponse("ID obrigatorio.", "VALIDATION_ERROR"), { status: 422 });
     }
 
-    await conversationService.delete(body.id);
-    return NextResponse.json(successResponse("Conversa excluida.", { id: body.id }));
+    await conversationService.delete(id);
+    return NextResponse.json(successResponse("Conversa excluida.", { id }));
   } catch (error) {
     const authError = authErrorResponse(error);
     if (authError) return authError;

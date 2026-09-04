@@ -78,7 +78,11 @@ export function ConversationsPanel() {
     }
 
     setConversations((current) => mergeConversations(result.data, current));
-    setActiveId((current) => (nextActiveId ?? current) || (result.data[0]?.id ?? ""));
+    setActiveId((current) => {
+      const preferredId = nextActiveId ?? current;
+      if (preferredId && result.data.some((conversation) => conversation.id === preferredId)) return preferredId;
+      return result.data[0]?.id ?? "";
+    });
     setLoading(false);
     setRefreshing(false);
   }
@@ -218,17 +222,18 @@ export function ConversationsPanel() {
   async function handleDeleteConversation() {
     if (!active || !window.confirm(`Excluir conversa de ${getConversationName(active)}?`)) return;
     setError("");
-    const response = await fetch("/api/conversations", {
+    const deletedId = active.id;
+    const response = await fetch(`/api/conversations?id=${encodeURIComponent(deletedId)}`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: active.id }),
     });
     const result = await response.json() as ApiResult<{ id: string }>;
     if (result.status !== "success") {
       setError(result.message);
       return;
     }
-    setActiveId("");
+    setConversations((current) => current.filter((conversation) => conversation.id !== deletedId));
+    setActiveId((current) => current === deletedId ? "" : current);
     await refreshConversations();
   }
 

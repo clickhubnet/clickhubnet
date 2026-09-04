@@ -6,6 +6,7 @@ import {
   ReceiptText,
   MapPinned,
   Settings,
+  Smartphone,
   Users,
   Workflow,
 } from "lucide-react";
@@ -15,6 +16,7 @@ export const navigationItems = [
   { title: "Dashboard", href: "/dashboard", icon: BarChart3, permission: permissions.dashboardView },
   { title: "Leads", href: "/leads", icon: Users, permission: permissions.leadsView },
   { title: "Conversas", href: "/conversas", icon: MessageCircle, permission: permissions.conversationsView },
+  { title: "Verificar WhatsApp", href: "/verificar-whatsapp", icon: Smartphone, permission: permissions.conversationsView },
   { title: "Compromissos", href: "/compromissos", icon: CalendarCheck, permission: permissions.appointmentsView },
   { title: "Despesas", href: "/despesas", icon: ReceiptText, permission: permissions.expensesView },
   { title: "N8N", href: "/n8n", icon: Workflow, permission: permissions.agentsEdit },

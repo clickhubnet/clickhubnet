@@ -135,8 +135,11 @@ export async function DELETE(request: Request) {
   try {
     const user = await requireCurrentUser();
     assertPermission(user, permissions.conversationsView);
+    const url = new URL(request.url);
     const body = await request.json().catch(() => ({})) as { ids?: string[]; all?: boolean };
-    const result = await deleteBroadcastDispatches(body.all ? undefined : body.ids);
+    const deleteAll = body.all === true || url.searchParams.get("all") === "1" || url.searchParams.get("all") === "true";
+    const ids = Array.isArray(body.ids) ? body.ids : url.searchParams.getAll("id");
+    const result = await deleteBroadcastDispatches(deleteAll ? undefined : ids);
     return NextResponse.json(successResponse("Historico de disparos excluido.", result));
   } catch (error) {
     const authError = authErrorResponse(error);

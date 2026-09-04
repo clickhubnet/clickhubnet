@@ -268,10 +268,10 @@ export function ConversationsPanel() {
   async function deleteHistory(ids?: string[]) {
     if (ids?.length && !window.confirm(`Excluir ${ids.length} registro(s) do historico? As conversas nao serao apagadas.`)) return;
     if (!ids?.length && !window.confirm("Excluir todo o historico de disparos? As conversas nao serao apagadas.")) return;
-    const response = await fetch("/api/whatsapp/broadcast", {
+    const response = await fetch(ids?.length ? "/api/whatsapp/broadcast" : "/api/whatsapp/broadcast?all=1", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(ids?.length ? { ids } : { all: true }),
+      body: ids?.length ? JSON.stringify({ ids }) : undefined,
     });
     const result = await response.json() as ApiResult<{ deleted: number }>;
     if (result.status !== "success") {
@@ -824,7 +824,7 @@ export function ConversationsPanel() {
                         <div className="h-full rounded-full bg-blue-500" style={{ width: `${getBroadcastProgress(item)}%` }} />
                       </div>
                       <p className="mt-2 text-muted-foreground">
-                        Enviados: {item.sent} · Falhas: {item.failed} · Inválidos: {item.invalid} · Duplicados: {item.duplicate}
+                        Enviados: {item.sent} · Ignorados sem WhatsApp: {countBroadcastRecipientsByStatus(item, "sem_whatsapp")} · Falhas: {item.failed} · Inválidos: {item.invalid} · Duplicados: {item.duplicate}
                       </p>
                       {item.recipientStatuses?.length ? (
                         <div className="mt-2 max-h-56 overflow-y-auto rounded-lg bg-slate-950/40 p-2">
@@ -1175,6 +1175,10 @@ function getBroadcastProgress(item: BroadcastDispatch) {
     ["enviado", "sem_whatsapp", "falha_validacao", "falha_envio", "auto_pausado", "cancelado"].includes(recipient.status),
   ).length;
   return Math.min(100, Math.round((finished / actionable) * 100));
+}
+
+function countBroadcastRecipientsByStatus(item: BroadcastDispatch, status: string) {
+  return item.recipientStatuses.filter((recipient) => recipient.status === status).length;
 }
 
 function formatBroadcastStatus(status: string) {

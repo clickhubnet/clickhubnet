@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { Ban, MessageCircle, Phone, Plus, RefreshCw, Send, Tag, Trash2, Upload, X } from "lucide-react";
+import { Ban, Download, FileText, MessageCircle, Phone, Plus, RefreshCw, Send, Tag, Trash2, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -565,16 +565,20 @@ export function ConversationsPanel() {
               </div>
               <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[#010b19]/55 p-4 pr-2">
                 {active.messages.length ? (
-                  active.messages.map((item) => (
-                    <div key={item.id} className={`flex ${item.direction === "outbound" ? "justify-end" : "justify-start"}`}>
-                      <div className={`max-w-[78%] rounded-2xl border px-3 py-2 text-sm shadow-sm ${item.direction === "outbound" ? "border-blue-500/45 bg-[#0757b8] text-white" : "border-blue-400/15 bg-blue-500/10 text-slate-100"}`}>
-                        <p className="whitespace-pre-wrap">{item.body}</p>
-                        <p className={`mt-1 text-[11px] ${item.direction === "outbound" ? "text-blue-100/75" : "text-slate-400"}`}>
-                          {formatDate(item.createdAt)}{isPendingLocalMessage(item) ? " · enviando" : ""}{isFailedLocalMessage(item) ? " · falha" : ""}
-                        </p>
+                  active.messages.map((item) => {
+                    const media = getMessageMedia(item);
+                    return (
+                      <div key={item.id} className={`flex ${item.direction === "outbound" ? "justify-end" : "justify-start"}`}>
+                        <div className={`max-w-[78%] rounded-2xl border px-3 py-2 text-sm shadow-sm ${item.direction === "outbound" ? "border-blue-500/45 bg-[#0757b8] text-white" : "border-blue-400/15 bg-blue-500/10 text-slate-100"}`}>
+                          {media ? <MessageMediaPreview media={media} /> : null}
+                          {shouldShowMessageText(item, media) ? <p className="whitespace-pre-wrap">{item.body}</p> : null}
+                          <p className={`mt-1 text-[11px] ${item.direction === "outbound" ? "text-blue-100/75" : "text-slate-400"}`}>
+                            {formatDate(item.createdAt)}{isPendingLocalMessage(item) ? " · enviando" : ""}{isFailedLocalMessage(item) ? " · falha" : ""}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-blue-400/20 bg-blue-500/5 p-6 text-center text-sm text-muted-foreground">
                     Nenhuma mensagem ainda. Envie uma mensagem para iniciar.
@@ -876,6 +880,152 @@ function formatTime(value: string) {
 
 function getLastMessage(conversation: ChatConversation) {
   return [...conversation.messages].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()).at(-1);
+}
+
+type MessageMedia = {
+  kind: "imagem" | "audio" | "video" | "documento";
+  url: string;
+  fileName: string;
+  mimeType: string;
+};
+
+function getMessageMedia(message: ChatMessage): MessageMedia | null {
+  if (!message.rawPayload || typeof message.rawPayload !== "object" || Array.isArray(message.rawPayload)) return null;
+  const payload = message.rawPayload as Record<string, unknown>;
+  const nestedMedia = payload.media && typeof payload.media === "object" && !Array.isArray(payload.media)
+    ? payload.media as Record<string, unknown>
+    : {};
+  const raw = payload.raw && typeof payload.raw === "object" && !Array.isArray(payload.raw)
+    ? payload.raw as Record<string, unknown>
+    : {};
+  const data = raw.data && typeof raw.data === "object" && !Array.isArray(raw.data)
+    ? raw.data as Record<string, unknown>
+    : raw;
+  const webhookMessage = data.message && typeof data.message === "object" && !Array.isArray(data.message)
+    ? data.message as Record<string, unknown>
+    : {};
+  const imageMessage = webhookMessage.imageMessage && typeof webhookMessage.imageMessage === "object" && !Array.isArray(webhookMessage.imageMessage)
+    ? webhookMessage.imageMessage as Record<string, unknown>
+    : {};
+  const audioMessage = webhookMessage.audioMessage && typeof webhookMessage.audioMessage === "object" && !Array.isArray(webhookMessage.audioMessage)
+    ? webhookMessage.audioMessage as Record<string, unknown>
+    : {};
+  const videoMessage = webhookMessage.videoMessage && typeof webhookMessage.videoMessage === "object" && !Array.isArray(webhookMessage.videoMessage)
+    ? webhookMessage.videoMessage as Record<string, unknown>
+    : {};
+  const documentMessage = webhookMessage.documentMessage && typeof webhookMessage.documentMessage === "object" && !Array.isArray(webhookMessage.documentMessage)
+    ? webhookMessage.documentMessage as Record<string, unknown>
+    : {};
+  const candidates = [payload, nestedMedia, data, webhookMessage, imageMessage, audioMessage, videoMessage, documentMessage];
+  const source = firstPayloadString(candidates.flatMap((item) => [
+    item.mediaUrl,
+    item.url,
+    item.imageUrl,
+    item.audioUrl,
+    item.videoUrl,
+    item.documentUrl,
+    item.base64,
+    item.data,
+    item.directPath,
+  ]));
+  const mimeType = firstPayloadString(candidates.flatMap((item) => [item.mimeType, item.mimetype]));
+  const kind = normalizeMessageKind(payload.kind || data.messageType, mimeType, source);
+  if (!source && kind === "texto") return null;
+  const fileName = firstPayloadString(candidates.flatMap((item) => [item.fileName, item.filename, item.title])) || fileNameForKind(kind);
+  const url = source?.startsWith("data:") || source?.startsWith("blob:")
+    ? source
+    : `/api/conversations/messages/${encodeURIComponent(message.id)}/media`;
+
+  return {
+    kind: kind === "texto" ? "documento" : kind,
+    url,
+    fileName,
+    mimeType: mimeType || mimeTypeForKind(kind),
+  };
+}
+
+function shouldShowMessageText(message: ChatMessage, media: MessageMedia | null) {
+  if (!media) return true;
+  const normalized = message.body.trim().toLowerCase();
+  if (!normalized) return false;
+  return !["imagem recebida", "áudio recebido", "audio recebido", "video recebido", "documento recebido", "imagem", "audio", "áudio", "video", "documento"].includes(normalized);
+}
+
+function MessageMediaPreview({ media }: { media: MessageMedia }) {
+  const openLabel = media.kind === "imagem" ? "Abrir imagem" : media.kind === "audio" ? "Abrir áudio" : media.kind === "video" ? "Abrir vídeo" : "Abrir documento";
+  return (
+    <div className="mb-2 space-y-2">
+      {media.kind === "imagem" ? (
+        <a href={media.url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-xl border border-blue-300/20 bg-slate-950/30">
+          <img src={media.url} alt={media.fileName} className="max-h-80 w-full object-contain" />
+        </a>
+      ) : media.kind === "audio" ? (
+        <audio controls preload="none" className="max-w-full" src={media.url}>
+          Seu navegador nao suporta reproducao de audio.
+        </audio>
+      ) : media.kind === "video" ? (
+        <video controls preload="metadata" className="max-h-80 w-full rounded-xl" src={media.url}>
+          Seu navegador nao suporta reproducao de video.
+        </video>
+      ) : (
+        <div className="flex items-center gap-2 rounded-xl border border-blue-300/20 bg-slate-950/30 p-3">
+          <FileText className="h-5 w-5" />
+          <span className="truncate text-sm">{media.fileName}</span>
+        </div>
+      )}
+      <div className="flex flex-wrap gap-2 text-xs">
+        <a className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 hover:bg-white/15" href={media.url} target="_blank" rel="noreferrer">
+          {openLabel}
+        </a>
+        <a className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 hover:bg-white/15" href={media.url} download={media.fileName}>
+          <Download className="h-3 w-3" />
+          Baixar
+        </a>
+      </div>
+    </div>
+  );
+}
+
+function normalizeMessageKind(kind: unknown, mimeType?: unknown, mediaUrl?: unknown): "texto" | "imagem" | "audio" | "video" | "documento" {
+  const normalizedKind = String(kind ?? "").trim().toLowerCase();
+  if (normalizedKind === "imagem" || normalizedKind === "image") return "imagem";
+  if (normalizedKind === "audio" || normalizedKind === "ptt" || normalizedKind === "voice") return "audio";
+  if (normalizedKind === "video" || normalizedKind === "vídeo") return "video";
+  if (normalizedKind === "documento" || normalizedKind === "document" || normalizedKind === "file" || normalizedKind === "arquivo") return "documento";
+
+  const normalizedMimeType = String(mimeType ?? "").trim().toLowerCase();
+  if (normalizedMimeType.startsWith("image/")) return "imagem";
+  if (normalizedMimeType.startsWith("audio/")) return "audio";
+  if (normalizedMimeType.startsWith("video/")) return "video";
+  if (normalizedMimeType) return "documento";
+
+  const normalizedMediaUrl = String(mediaUrl ?? "").trim().toLowerCase();
+  if (normalizedMediaUrl.match(/\.(png|jpe?g|webp|gif)(\?|$)/i)) return "imagem";
+  if (normalizedMediaUrl.match(/\.(ogg|mp3|wav|m4a|webm)(\?|$)/i)) return "audio";
+  if (normalizedMediaUrl.match(/\.(mp4|mov|mkv)(\?|$)/i)) return "video";
+  if (normalizedMediaUrl) return "documento";
+  return "texto";
+}
+
+function firstPayloadString(values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function mimeTypeForKind(kind: string) {
+  if (kind === "imagem") return "image/jpeg";
+  if (kind === "audio") return "audio/ogg";
+  if (kind === "video") return "video/mp4";
+  return "application/octet-stream";
+}
+
+function fileNameForKind(kind: string) {
+  if (kind === "imagem") return "imagem.jpg";
+  if (kind === "audio") return "audio.ogg";
+  if (kind === "video") return "video.mp4";
+  return "documento";
 }
 
 function getConversationTags(conversation?: ChatConversation) {

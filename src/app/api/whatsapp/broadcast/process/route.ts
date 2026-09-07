@@ -12,6 +12,6 @@ export async function GET(request: Request) {
     }
   }
 
-  const result = await processDueBroadcasts();
+  const result = await processDueBroadcasts(1);
   return NextResponse.json(successResponse("Disparos processados.", result));
 }

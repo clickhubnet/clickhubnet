@@ -68,6 +68,10 @@ function resolveTypingDelay(delayTypingSeconds?: number) {
   return Math.min(15_000, Math.max(1_000, Math.round(delayTypingSeconds * 1000)));
 }
 
+function createEvolutionTimeoutSignal(timeoutMs = 15_000) {
+  return AbortSignal.timeout(timeoutMs);
+}
+
 async function parseApiResponse(response: Response) {
   const text = await response.text();
   try {
@@ -124,6 +128,7 @@ export async function checkEvolutionWhatsAppNumber(input: string): Promise<Check
     },
     body: JSON.stringify({ numbers: [normalizedInput] }),
     cache: "no-store",
+    signal: createEvolutionTimeoutSignal(),
   });
 
   const result = await parseApiResponse(response);
@@ -149,6 +154,7 @@ export async function sendEvolutionTextMessage(input: SendEvolutionTextInput) {
       ...(delay ? { delay } : {}),
     }),
     cache: "no-store",
+    signal: createEvolutionTimeoutSignal(),
   });
 
   const result = await parseApiResponse(response);
@@ -173,6 +179,7 @@ export async function markEvolutionMessageAsRead(input: { phone: string; message
         id: [input.messageId],
       }),
       cache: "no-store",
+      signal: createEvolutionTimeoutSignal(),
     });
 
     if (response.ok) return true;
@@ -220,6 +227,7 @@ export async function setEvolutionChatPresence(input: {
         isAudio: input.isAudio ?? false,
       }),
       cache: "no-store",
+      signal: createEvolutionTimeoutSignal(),
     });
 
     if (response.ok) return true;
@@ -323,6 +331,7 @@ async function postEvolutionJson(url: string, apiKey: string, payload: Record<st
     },
     body: JSON.stringify(payload),
     cache: "no-store",
+    signal: createEvolutionTimeoutSignal(),
   });
 
   const result = await parseApiResponse(response);
@@ -335,6 +344,7 @@ async function postEvolutionForm(url: string, apiKey: string, form: FormData) {
     headers: { apikey: apiKey },
     body: form,
     cache: "no-store",
+    signal: createEvolutionTimeoutSignal(),
   });
 
   const result = await parseApiResponse(response);

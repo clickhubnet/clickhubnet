@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
-import { CheckCircle2, Clipboard, Loader2, Smartphone } from "lucide-react";
+import { CheckCircle2, Clipboard, Download, Loader2, Smartphone, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -31,6 +31,7 @@ export function WhatsAppVerifierPanel() {
   const [result, setResult] = useState<VerifyResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [fileName, setFileName] = useState("");
   const [error, setError] = useState("");
   const estimatedCount = useMemo(() => phones.split(/[\n,;]+/).map((item) => item.trim()).filter(Boolean).length, [phones]);
 
@@ -61,6 +62,45 @@ export function WhatsAppVerifierPanel() {
     window.setTimeout(() => setCopied(false), 1800);
   }
 
+  async function handleFileChange(file?: File | null) {
+    if (!file) return;
+    setError("");
+    setResult(null);
+    setFileName(file.name);
+    try {
+      const extension = file.name.split(".").pop()?.toLowerCase();
+      if (extension === "csv" || file.type.includes("csv")) {
+        const text = await file.text();
+        setPhones((current) => mergePhoneText(current, text));
+        return;
+      }
+
+      const buffer = await file.arrayBuffer();
+      const XLSX = await import("xlsx");
+      const workbook = XLSX.read(buffer, { type: "array" });
+      const values: string[] = [];
+      for (const sheetName of workbook.SheetNames) {
+        const worksheet = workbook.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json<unknown[]>(worksheet, { header: 1, defval: "" });
+        values.push(...rows.flatMap((row) => row.map((cell) => String(cell ?? ""))));
+      }
+      setPhones((current) => mergePhoneText(current, values.join("\n")));
+    } catch {
+      setFileName("");
+      setError("Nao foi possivel ler a planilha. Use .xlsx, .xls ou .csv.");
+    }
+  }
+
+  async function downloadFilteredSpreadsheet() {
+    if (!result?.withWhatsApp.length) return;
+    const XLSX = await import("xlsx");
+    const rows = result.withWhatsApp.map((phone) => ({ WHATSAPP: phone }));
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Com WhatsApp");
+    XLSX.writeFile(workbook, `whatsapp-verificados-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }
+
   return (
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.8fr)]">
       <Card className="glass-panel neon-ring">
@@ -72,6 +112,16 @@ export function WhatsAppVerifierPanel() {
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={handleSubmit}>
+            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-blue-400/30 bg-blue-500/5 p-4 text-sm font-medium text-blue-100 transition hover:bg-blue-500/10">
+              <Upload className="h-4 w-4" />
+              {fileName ? `Planilha carregada: ${fileName}` : "Importar planilha .xlsx, .xls ou .csv"}
+              <input
+                className="hidden"
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                onChange={(event) => void handleFileChange(event.target.files?.[0])}
+              />
+            </label>
             <Textarea
               className="min-h-[24rem]"
               value={phones}
@@ -107,8 +157,8 @@ export function WhatsAppVerifierPanel() {
               <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
                 <Metric label="Entrada" value={result.summary.totalInput} />
                 <Metric label="Com WhatsApp" value={result.summary.withWhatsApp} positive />
-                <Metric label="Ignorados" value={result.summary.withoutWhatsApp} />
-                <Metric label="Inválidos" value={result.summary.invalid} />
+                <Metric label="Sem WhatsApp" value={result.summary.withoutWhatsApp} />
+                <Metric label="Duplicados removidos" value={result.summary.duplicates} />
               </div>
               <Textarea
                 className="min-h-[18rem] font-mono text-sm"
@@ -116,10 +166,19 @@ export function WhatsAppVerifierPanel() {
                 readOnly
                 placeholder="Os números com WhatsApp aparecerão aqui."
               />
-              <Button className="w-full" type="button" onClick={() => void copyResult()} disabled={!result.formatted}>
-                <Clipboard className="h-4 w-4" />
-                {copied ? "Copiado" : "Copiar para envio em massa"}
-              </Button>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Button className="w-full" type="button" onClick={() => void copyResult()} disabled={!result.formatted}>
+                  <Clipboard className="h-4 w-4" />
+                  {copied ? "Copiado" : "Copiar"}
+                </Button>
+                <Button className="w-full" type="button" variant="outline" onClick={() => void downloadFilteredSpreadsheet()} disabled={!result.withWhatsApp.length}>
+                  <Download className="h-4 w-4" />
+                  Baixar planilha limpa
+                </Button>
+              </div>
+              <p className="rounded-xl border border-blue-400/15 bg-blue-500/5 p-3 text-xs text-muted-foreground">
+                A planilha baixada remove duplicados, inválidos e números sem WhatsApp. Ela sai com uma coluna chamada WHATSAPP.
+              </p>
               {result.summary.errors ? (
                 <p className="rounded-xl border border-amber-400/25 bg-amber-500/10 p-3 text-xs text-amber-100">
                   {result.summary.errors} número(s) não puderam ser verificados por erro da Evolution e foram ignorados.
@@ -135,6 +194,27 @@ export function WhatsAppVerifierPanel() {
       </Card>
     </div>
   );
+}
+
+function mergePhoneText(current: string, next: string) {
+  const currentLines = current.split(/\n+/).map((item) => item.trim()).filter(Boolean);
+  const nextLines = extractPhoneCandidates(next);
+  return [...currentLines, ...nextLines].join("\n");
+}
+
+function extractPhoneCandidates(value: string) {
+  return value
+    .split(/[\n,;|\t]+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => item.replace(/\D/g, ""))
+    .map((digits) => {
+      if (digits.startsWith("55") && (digits.length === 12 || digits.length === 13)) return digits;
+      const withoutZeros = digits.replace(/^0+/, "");
+      if (withoutZeros.length === 10 || withoutZeros.length === 11) return `55${withoutZeros}`;
+      return withoutZeros;
+    })
+    .filter((digits) => /^55\d{10,11}$/.test(digits));
 }
 
 function Metric({ label, value, positive = false }: { label: string; value: number; positive?: boolean }) {

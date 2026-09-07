@@ -102,6 +102,7 @@ export class ChatbotEngineService {
 
     const agent = await this.chatbotRepository.getAgentByInstance(input.instanceId);
     const conversation = await this.chatbotRepository.findOrCreateConversation(phone, agent?.id);
+    const currentMemory = normalizeMemory(conversation.memory);
 
     if (!alreadyReceived && input.providerId) {
       const claimed = await this.chatbotRepository.claimInboundMessage({
@@ -122,6 +123,10 @@ export class ChatbotEngineService {
       });
     }
 
+    if (currentMemory.humanTakeover === true) {
+      return { state: conversation.state, replied: false, delayMs: 0, humanTakeover: true };
+    }
+
     const provider = input.provider ?? "zapi";
 
     if (input.providerId && provider === "zapi") {
@@ -132,7 +137,7 @@ export class ChatbotEngineService {
       message: input.message,
       state: conversation.state,
       memory: {
-        ...normalizeMemory(conversation.memory),
+        ...currentMemory,
         whatsapp: phone,
       },
       agent,
@@ -232,8 +237,11 @@ export class ChatbotEngineService {
 
     if (isHandoffRequest(text)) {
       memory.handoff = true;
+      memory.humanTakeover = true;
+      memory.takeoverAt = new Date().toISOString();
+      memory.takeoverReason = "Cliente pediu atendimento humano.";
       return {
-        state: "HUMAN_HANDOFF",
+        state: input.state,
         memory,
         reply: "Combinado, vou sinalizar para uma consultora humana continuar seu atendimento por aqui. 😊",
       };
@@ -578,14 +586,6 @@ export class ChatbotEngineService {
       };
     }
 
-    if (input.state === "HUMAN_HANDOFF") {
-      return {
-        state: "HUMAN_HANDOFF",
-        memory,
-        reply: "Seu atendimento está sinalizado para uma consultora. Assim que possível, nossa equipe continua por aqui. 😊",
-      };
-    }
-
     return {
       state: "ASK_CEP",
       memory: {},
@@ -828,6 +828,9 @@ type ChatMemory = {
   planValue?: number;
   recommendedPlanId?: string;
   handoff?: boolean;
+  humanTakeover?: boolean;
+  takeoverAt?: string | null;
+  takeoverReason?: string | null;
   objectionCount?: number;
   pendingUpsellPlanId?: string;
   offeredUpsellPlanIds?: string[];

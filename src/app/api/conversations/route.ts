@@ -64,12 +64,13 @@ export async function PUT(request: Request) {
       tags?: unknown;
       state?: string;
       blocked?: boolean;
+      humanTakeover?: boolean;
     };
     if (!body.id) {
       return NextResponse.json(errorResponse("ID obrigatorio.", "VALIDATION_ERROR"), { status: 422 });
     }
 
-    const conversation = await conversationService.update(body as { id: string; name?: string; assignedTo?: string; tags?: unknown; state?: string; blocked?: boolean });
+    const conversation = await conversationService.update(body as { id: string; name?: string; assignedTo?: string; tags?: unknown; state?: string; blocked?: boolean; humanTakeover?: boolean });
     return NextResponse.json(successResponse("Conversa atualizada.", conversation));
   } catch (error) {
     const authError = authErrorResponse(error);

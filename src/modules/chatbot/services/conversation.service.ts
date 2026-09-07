@@ -15,7 +15,7 @@ export class ConversationService {
     return this.chatbotRepository.createManualConversation(input);
   }
 
-  async update(input: { id: string; name?: string; assignedTo?: string; tags?: unknown; state?: string; blocked?: boolean }) {
+  async update(input: { id: string; name?: string; assignedTo?: string; tags?: unknown; state?: string; blocked?: boolean; humanTakeover?: boolean }) {
     return this.chatbotRepository.updateManualConversation(input);
   }
 

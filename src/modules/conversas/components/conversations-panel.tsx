@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { Ban, Download, FileText, MessageCircle, Phone, Plus, RefreshCw, Send, Tag, Trash2, Upload, X } from "lucide-react";
+import { Ban, Download, FileText, Handshake, MessageCircle, Phone, Plus, RefreshCw, Send, Tag, Trash2, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -120,6 +120,7 @@ export function ConversationsPanel() {
   );
   const activeTags = useMemo(() => getConversationTags(active), [active]);
   const activeBlocked = isConversationBlocked(active);
+  const activeHumanTakeover = isConversationHumanTakeover(active);
   const availableTags = useMemo(() => {
     return Array.from(new Set(conversations.flatMap((conversation) => getConversationTags(conversation)))).sort((a, b) => a.localeCompare(b));
   }, [conversations]);
@@ -425,6 +426,39 @@ export function ConversationsPanel() {
     setConversations((current) => mergeConversations([result.data], current));
   }
 
+  async function toggleHumanTakeover() {
+    if (!active) return;
+    const nextHumanTakeover = !activeHumanTakeover;
+    setError("");
+
+    setConversations((current) => current.map((conversation) =>
+      conversation.id === active.id
+        ? {
+            ...conversation,
+            memory: {
+              ...conversation.memory,
+              humanTakeover: nextHumanTakeover,
+              takeoverAt: nextHumanTakeover ? new Date().toISOString() : null,
+              takeoverReason: nextHumanTakeover ? "Assumido manualmente no CRM." : null,
+            },
+          }
+        : conversation,
+    ));
+
+    const response = await fetch("/api/conversations", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: active.id, humanTakeover: nextHumanTakeover }),
+    });
+    const result = await response.json() as ApiResult<ChatConversation>;
+    if (result.status !== "success") {
+      setError(result.message);
+      await refreshConversations(active.id);
+      return;
+    }
+    setConversations((current) => mergeConversations([result.data], current));
+  }
+
   async function handleDeleteConversation() {
     if (!active || !window.confirm(`Excluir conversa de ${getConversationName(active)}?`)) return;
     setError("");
@@ -519,6 +553,10 @@ export function ConversationsPanel() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  <Button variant={activeHumanTakeover ? "outline" : "secondary"} size="sm" type="button" onClick={() => void toggleHumanTakeover()}>
+                    <Handshake className="h-4 w-4 text-blue-300" />
+                    {activeHumanTakeover ? "Devolver" : "Assumir"}
+                  </Button>
                   <Button variant={activeBlocked ? "outline" : "secondary"} size="sm" type="button" onClick={() => void toggleActiveBlocked()}>
                     <Ban className="h-4 w-4 text-red-500" />
                     {activeBlocked ? "Desbloquear" : "Bloquear"}
@@ -534,6 +572,11 @@ export function ConversationsPanel() {
               {activeBlocked ? (
                 <div className="border-b bg-red-500/10 px-4 py-3 text-sm font-medium text-red-700">
                   Este contato está bloqueado. Novas mensagens recebidas desse número serão ignoradas.
+                </div>
+              ) : null}
+              {activeHumanTakeover && !activeBlocked ? (
+                <div className="border-b border-amber-300/25 bg-amber-500/10 px-4 py-3 text-sm font-medium text-amber-100">
+                  Atendimento assumido por humano. A Lily está pausada nesta conversa até clicar em Devolver.
                 </div>
               ) : null}
               <div className="border-b border-blue-400/15 bg-[#02142d]/55 p-3">
@@ -1042,6 +1085,11 @@ function getConversationTags(conversation?: ChatConversation) {
 function isConversationBlocked(conversation?: ChatConversation) {
   if (!conversation) return false;
   return conversation.state === "BLOCKED" || conversation.memory?.blocked === true;
+}
+
+function isConversationHumanTakeover(conversation?: ChatConversation) {
+  if (!conversation) return false;
+  return conversation.memory?.humanTakeover === true;
 }
 
 function normalizeTags(tags: string[]) {

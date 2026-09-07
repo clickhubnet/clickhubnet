@@ -103,6 +103,7 @@ export class ChatbotRepository {
     tags?: unknown;
     state?: string;
     blocked?: boolean;
+    humanTakeover?: boolean;
   }) {
     const current = await prisma.chatConversation.findUnique({ where: { id: input.id } });
     if (!current) {
@@ -167,6 +168,9 @@ export class ChatbotRepository {
           assignedTo: input.assignedTo ?? memory.assignedTo,
           tags: input.tags ?? memory.tags,
           blocked: input.blocked ?? memory.blocked,
+          humanTakeover: input.humanTakeover ?? memory.humanTakeover,
+          takeoverAt: input.humanTakeover === true ? new Date().toISOString() : input.humanTakeover === false ? null : memory.takeoverAt,
+          takeoverReason: input.humanTakeover === true ? (memory.takeoverReason ?? "Assumido manualmente no CRM.") : input.humanTakeover === false ? null : memory.takeoverReason,
           previousState: input.blocked === true ? (previousState ?? current?.state ?? "MANUAL") : previousState,
         }),
       },

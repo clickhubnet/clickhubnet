@@ -68,7 +68,7 @@ function resolveTypingDelay(delayTypingSeconds?: number) {
   return Math.min(15_000, Math.max(1_000, Math.round(delayTypingSeconds * 1000)));
 }
 
-function createEvolutionTimeoutSignal(timeoutMs = 8_000) {
+function createEvolutionTimeoutSignal(timeoutMs = 5_000) {
   return AbortSignal.timeout(timeoutMs);
 }
 

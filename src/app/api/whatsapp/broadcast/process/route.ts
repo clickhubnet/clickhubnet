@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { errorResponse, successResponse } from "@/lib/api-response";
 import { processDueBroadcasts } from "@/services/whatsapp-broadcast";
 
+export const maxDuration = 60;
+
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET?.trim();
   if (secret) {

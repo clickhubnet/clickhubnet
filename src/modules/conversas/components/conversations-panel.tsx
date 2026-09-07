@@ -791,7 +791,7 @@ export function ConversationsPanel() {
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  O cron da Vercel processa automaticamente os horários. Dentro de cada bloco, os números saem entre 60 e 140 segundos por padrão.
+                  O cron-job.org chama o processamento a cada minuto. Dentro de cada bloco, os números saem entre 60 e 140 segundos por padrão.
                 </p>
               </>
             ) : (

@@ -3,7 +3,7 @@ import { EvolutionHealthPanel } from "@/modules/evolution-health/components/evol
 
 export default function SaudeEvolutionPage() {
   return (
-    <AppShell title="Saúde Evolution">
+    <AppShell title="Saúde WhatsApp">
       <EvolutionHealthPanel />
     </AppShell>
   );

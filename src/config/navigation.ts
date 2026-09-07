@@ -18,7 +18,7 @@ export const navigationItems = [
   { title: "Leads", href: "/leads", icon: Users, permission: permissions.leadsView },
   { title: "Conversas", href: "/conversas", icon: MessageCircle, permission: permissions.conversationsView },
   { title: "Verificar WhatsApp", href: "/verificar-whatsapp", icon: Smartphone, permission: permissions.conversationsView },
-  { title: "Saúde Evolution", href: "/saude-evolution", icon: HeartPulse, permission: permissions.conversationsView },
+  { title: "Saúde WhatsApp", href: "/saude-evolution", icon: HeartPulse, permission: permissions.conversationsView },
   { title: "Compromissos", href: "/compromissos", icon: CalendarCheck, permission: permissions.appointmentsView },
   { title: "Despesas", href: "/despesas", icon: ReceiptText, permission: permissions.expensesView },
   { title: "N8N", href: "/n8n", icon: Workflow, permission: permissions.agentsEdit },

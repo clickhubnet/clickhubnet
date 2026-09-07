@@ -93,7 +93,7 @@ export function EvolutionHealthPanel() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold ${statusCopy.className}`}>
           <StatusIcon className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          Saúde Evolution: {statusCopy.label}
+          Saúde WhatsApp: {statusCopy.label}
         </div>
         <Button type="button" variant="outline" onClick={() => void loadHealth()} disabled={loading}>
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
@@ -119,10 +119,10 @@ export function EvolutionHealthPanel() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Activity className="h-5 w-5 text-blue-300" />
-              Testes da Evolution API
+              Testes da API WhatsApp
             </CardTitle>
             <CardDescription>
-              Checagens em tempo real da instância, webhook e número padrão.
+              Checagens em tempo real do provedor, webhook e número padrão.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -192,7 +192,7 @@ export function EvolutionHealthPanel() {
               Logs recentes
             </CardTitle>
             <CardDescription>
-              Últimos eventos técnicos ligados à Evolution e WhatsApp.
+              Últimos eventos técnicos ligados à Meta/Evolution e WhatsApp.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -211,7 +211,7 @@ export function EvolutionHealthPanel() {
               </div>
             )) : (
               <div className="rounded-xl border border-dashed border-blue-400/20 bg-blue-500/5 p-6 text-center text-sm text-muted-foreground">
-                Nenhum log recente da Evolution.
+                Nenhum log recente do WhatsApp.
               </div>
             )}
           </CardContent>

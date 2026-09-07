@@ -6,6 +6,7 @@ import { requireCurrentUser } from "@/lib/auth-context";
 import { prisma } from "@/lib/prisma";
 import { assertPermission } from "@/lib/permissions";
 import { getEvolutionConfig } from "@/services/evolution";
+import { downloadMetaMediaBytes } from "@/services/meta-whatsapp";
 
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
   try {
@@ -26,6 +27,13 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     const headers = new Headers();
     headers.set("Content-Type", media.mimeType || "application/octet-stream");
     headers.set("Content-Disposition", `inline; filename="${sanitizeFileName(media.fileName || "midia")}"`);
+
+    const metaMediaId = resolveMetaMediaId(rawPayload);
+    if (metaMediaId) {
+      const downloaded = await downloadMetaMediaBytes(metaMediaId);
+      headers.set("Content-Type", downloaded.mimeType || media.mimeType || "application/octet-stream");
+      return new Response(downloaded.bytes, { headers });
+    }
 
     if (media.source.startsWith("data:")) {
       const parsed = parseDataUrl(media.source);
@@ -64,6 +72,13 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     if (authError) return authError;
     return NextResponse.json(errorResponse("Nao foi possivel abrir a midia."), { status: 500 });
   }
+}
+
+function resolveMetaMediaId(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "";
+  const payload = value as Record<string, unknown>;
+  if (payload.provider !== "meta") return "";
+  return typeof payload.mediaId === "string" ? payload.mediaId : "";
 }
 
 async function downloadEvolutionMedia(rawPayload: unknown) {

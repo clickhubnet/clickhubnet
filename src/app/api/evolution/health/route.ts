@@ -6,6 +6,7 @@ import { requireCurrentUser } from "@/lib/auth-context";
 import { assertPermission } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { checkEvolutionWhatsAppNumber, getEvolutionConfig } from "@/services/evolution";
+import { getMetaWhatsAppConfig, isMetaWhatsAppEnabled } from "@/services/meta-whatsapp";
 
 type HealthStatus = "ok" | "warning" | "error";
 
@@ -26,6 +27,10 @@ export async function GET() {
     const user = await requireCurrentUser();
     assertPermission(user, permissions.conversationsView);
 
+    if (isMetaWhatsAppEnabled()) {
+      return handleMetaHealth();
+    }
+
     const config = getEvolutionConfig();
     const startedAt = Date.now();
     const [connection, webhook, defaultNumber, broadcastQueue, recentLogs] = await Promise.all([
@@ -33,7 +38,7 @@ export async function GET() {
       checkWebhook(config),
       checkDefaultNumber(config),
       getBroadcastQueueSummary(),
-      getRecentEvolutionLogs(),
+      getRecentWhatsAppLogs(),
     ]);
 
     const checks = [connection, webhook, defaultNumber];
@@ -68,6 +73,75 @@ export async function GET() {
       { status: 500 },
     );
   }
+}
+
+async function handleMetaHealth() {
+  const config = getMetaWhatsAppConfig();
+  const startedAt = Date.now();
+  const [connection, webhook, defaultNumber, broadcastQueue, recentLogs] = await Promise.all([
+    checkMetaPhoneNumber(config),
+    checkMetaWebhookConfig(config),
+    checkMetaDefaultNumber(config),
+    getBroadcastQueueSummary(),
+    getRecentWhatsAppLogs(),
+  ]);
+  const checks = [connection, webhook, defaultNumber];
+  const overall = resolveOverallStatus(checks, broadcastQueue);
+
+  return NextResponse.json(successResponse("Saude da Meta WhatsApp consultada.", {
+    overall,
+    checkedAt: new Date().toISOString(),
+    durationMs: Date.now() - startedAt,
+    config: {
+      apiUrl: config.baseUrl,
+      instance: config.phoneNumberId,
+      defaultNumber: maskPhone(config.defaultNumber),
+      webhookUrl: process.env.META_WHATSAPP_WEBHOOK_URL?.trim() || process.env.EVOLUTION_WEBHOOK_URL?.trim() || "",
+      cronSecretConfigured: Boolean(process.env.CRON_SECRET?.trim()),
+      broadcast: {
+        minDelaySeconds: Number(process.env.WHATSAPP_BROADCAST_MIN_DELAY_SECONDS ?? 60),
+        maxDelaySeconds: Number(process.env.WHATSAPP_BROADCAST_MAX_DELAY_SECONDS ?? 140),
+        maxBatchSize: Number(process.env.WHATSAPP_BROADCAST_MAX_BATCH_SIZE ?? 205),
+        maxPerHour: Number(process.env.WHATSAPP_BROADCAST_MAX_PER_HOUR ?? 35),
+      },
+    },
+    checks,
+    broadcastQueue,
+    recentLogs,
+  }));
+}
+
+async function checkMetaPhoneNumber(config: ReturnType<typeof getMetaWhatsAppConfig>): Promise<EvolutionCheck> {
+  return timedCheck("meta-phone-number", "Phone Number ID", async () => {
+    const result = await metaJsonFetch(`${config.baseUrl}/${encodeURIComponent(config.phoneNumberId)}`, config.accessToken);
+    const displayPhoneNumber = String(readPath(result, ["display_phone_number"]) ?? "");
+    const verifiedName = String(readPath(result, ["verified_name"]) ?? "");
+    return {
+      status: "ok" as const,
+      message: `Meta respondeu para ${verifiedName || displayPhoneNumber || "o numero configurado"}.`,
+      details: { displayPhoneNumber, verifiedName },
+    };
+  });
+}
+
+async function checkMetaWebhookConfig(config: ReturnType<typeof getMetaWhatsAppConfig>): Promise<EvolutionCheck> {
+  return timedCheck("meta-webhook", "Webhook Meta", async () => {
+    const webhookUrl = process.env.META_WHATSAPP_WEBHOOK_URL?.trim() || process.env.EVOLUTION_WEBHOOK_URL?.trim();
+    const hasVerifyToken = Boolean(config.verifyToken);
+    return {
+      status: webhookUrl && hasVerifyToken ? "ok" as const : "warning" as const,
+      message: webhookUrl && hasVerifyToken ? "Webhook pronto para verificacao da Meta." : "Configure URL do webhook e token de verificacao da Meta.",
+      details: { webhookUrl, verifyTokenConfigured: hasVerifyToken, appSecretConfigured: Boolean(config.appSecret) },
+    };
+  });
+}
+
+async function checkMetaDefaultNumber(config: ReturnType<typeof getMetaWhatsAppConfig>): Promise<EvolutionCheck> {
+  return timedCheck("meta-default-number", "Número padrão", async () => ({
+    status: config.defaultNumber ? "ok" as const : "warning" as const,
+    message: config.defaultNumber ? "Número padrão da Meta configurado." : "META_WHATSAPP_DEFAULT_NUMBER nao configurado.",
+    details: { phone: maskPhone(config.defaultNumber) },
+  }));
 }
 
 async function checkConnectionState(config: ReturnType<typeof getEvolutionConfig>): Promise<EvolutionCheck> {
@@ -127,7 +201,7 @@ async function timedCheck(
       label,
       status: "error",
       durationMs: Date.now() - startedAt,
-      message: error instanceof Error ? error.message : "Falha ao consultar Evolution API.",
+      message: error instanceof Error ? error.message : "Falha ao consultar WhatsApp API.",
     };
   }
 }
@@ -143,6 +217,21 @@ async function evolutionJsonFetch(url: string, apiKey: string) {
   const result = text ? safeJsonParse(text) : null;
   if (!response.ok) {
     throw new Error(`Evolution respondeu HTTP ${response.status}: ${typeof result === "string" ? result : JSON.stringify(result)}`);
+  }
+  return result;
+}
+
+async function metaJsonFetch(url: string, accessToken: string) {
+  const response = await fetch(url, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
+    signal: AbortSignal.timeout(8_000),
+  });
+  const text = await response.text();
+  const result = text ? safeJsonParse(text) : null;
+  if (!response.ok) {
+    throw new Error(`Meta respondeu HTTP ${response.status}: ${typeof result === "string" ? result : JSON.stringify(result)}`);
   }
   return result;
 }
@@ -219,13 +308,15 @@ async function getBroadcastQueueSummary() {
   };
 }
 
-async function getRecentEvolutionLogs() {
+async function getRecentWhatsAppLogs() {
   const logs = await prisma.technicalLog.findMany({
     where: {
       OR: [
         { integration: "evolution" },
+        { integration: "meta-whatsapp" },
         { endpoint: { contains: "/api/whatsapp" } },
         { message: { contains: "Evolution" } },
+        { message: { contains: "Meta" } },
       ],
     },
     orderBy: { createdAt: "desc" },

@@ -8,6 +8,7 @@ import {
 } from "@/config/whatsapp-broadcast";
 import { prisma } from "@/lib/prisma";
 import { checkEvolutionWhatsAppNumber, sendEvolutionMediaMessage, sendEvolutionTextMessage } from "@/services/evolution";
+import { checkMetaWhatsAppNumber, isMetaWhatsAppEnabled, sendMetaMediaMessage, sendMetaTemplateMessage, sendMetaTextMessage } from "@/services/meta-whatsapp";
 
 const BROADCAST_HISTORY_KEY = "whatsappBroadcastDispatches";
 
@@ -211,7 +212,9 @@ export async function processBroadcastMessage(message: BroadcastProcessMessage) 
   });
 
   try {
-    const check = await checkEvolutionWhatsAppNumber(message.phone);
+    const check = isMetaWhatsAppEnabled()
+      ? await checkMetaWhatsAppNumber(message.phone)
+      : await checkEvolutionWhatsAppNumber(message.phone);
     if (!check.exists) {
       await patchRecipientStatus(message.dispatchId, message.phone, {
         status: "sem_whatsapp",
@@ -223,14 +226,17 @@ export async function processBroadcastMessage(message: BroadcastProcessMessage) 
   } catch (error) {
     await patchRecipientStatus(message.dispatchId, message.phone, {
       status: "falha_validacao",
-      error: error instanceof Error ? error.message : "Falha ao validar numero na Evolution API.",
+      error: error instanceof Error ? error.message : "Falha ao validar numero no WhatsApp.",
       checkedAt: new Date().toISOString(),
     });
     return;
   }
 
   try {
-    const result = message.media && message.mediaKind
+    const usingMeta = isMetaWhatsAppEnabled();
+    const result = usingMeta
+      ? await sendMetaBroadcastMessage(message)
+      : message.media && message.mediaKind
       ? await sendEvolutionMediaMessage({
           to: message.phone,
           media: message.media,
@@ -238,9 +244,9 @@ export async function processBroadcastMessage(message: BroadcastProcessMessage) 
           caption: message.message,
           mimeType: message.mimeType,
           fileName: message.fileName,
-        })
+      })
       : await sendEvolutionTextMessage({ to: message.phone, message: message.message, delayTypingSeconds: 2 });
-    const providerId = resolveEvolutionMessageId(result);
+    const providerId = resolveWhatsAppMessageId(result);
     const conversation = await findOrCreateBroadcastConversation({
       phone: message.phone,
       ownerUserId: message.ownerUserId,
@@ -253,7 +259,7 @@ export async function processBroadcastMessage(message: BroadcastProcessMessage) 
         providerId,
         sentAt: new Date(),
         rawPayload: normalizeJson({
-          provider: "evolution",
+          provider: usingMeta ? "meta" : "evolution",
           source: "broadcast",
           media: message.media ? { kind: message.mediaKind, mimeType: message.mimeType, fileName: message.fileName } : undefined,
           result,
@@ -277,6 +283,35 @@ export async function processBroadcastMessage(message: BroadcastProcessMessage) 
       checkedAt: new Date().toISOString(),
     });
   }
+}
+
+async function sendMetaBroadcastMessage(message: BroadcastProcessMessage) {
+  const templateName = process.env.META_WHATSAPP_BROADCAST_TEMPLATE_NAME?.trim();
+  if (templateName) {
+    return sendMetaTemplateMessage({
+      to: message.phone,
+      templateName,
+      languageCode: process.env.META_WHATSAPP_BROADCAST_TEMPLATE_LANGUAGE?.trim() || "pt_BR",
+      bodyParameters: message.message ? [message.message] : [],
+      media: message.media,
+      kind: message.mediaKind,
+      mimeType: message.mimeType,
+      fileName: message.fileName,
+    });
+  }
+
+  if (message.media && message.mediaKind) {
+    return sendMetaMediaMessage({
+      to: message.phone,
+      media: message.media,
+      kind: message.mediaKind,
+      caption: message.message,
+      mimeType: message.mimeType,
+      fileName: message.fileName,
+    });
+  }
+
+  return sendMetaTextMessage({ to: message.phone, message: message.message });
 }
 
 async function patchRecipientStatus(
@@ -545,9 +580,10 @@ function randomBroadcastDelaySeconds() {
     Math.floor(Math.random() * (WHATSAPP_BROADCAST_MAX_DELAY_SECONDS - WHATSAPP_BROADCAST_MIN_DELAY_SECONDS + 1));
 }
 
-function resolveEvolutionMessageId(result: unknown) {
+function resolveWhatsAppMessageId(result: unknown) {
   if (!result || typeof result !== "object") return undefined;
-  const payload = result as { key?: { id?: unknown }; message?: { key?: unknown }; messageId?: unknown; id?: unknown };
+  const payload = result as { key?: { id?: unknown }; message?: { key?: unknown }; messages?: Array<{ id?: unknown }>; messageId?: unknown; id?: unknown };
+  if (typeof payload.messages?.[0]?.id === "string" && payload.messages[0].id.trim()) return payload.messages[0].id.trim();
   if (typeof payload.key?.id === "string" && payload.key.id.trim()) return payload.key.id.trim();
   const messageKey = payload.message?.key;
   if (messageKey && typeof messageKey === "object" && "id" in messageKey && typeof messageKey.id === "string" && messageKey.id.trim()) {

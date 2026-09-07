@@ -4,6 +4,7 @@ import { ChatbotRepository } from "@/repositories/chatbot.repository";
 import { OpenAiService } from "@/services/openai/openai.service";
 import type { ExtractedCustomerData } from "@/services/openai/openai.service";
 import { checkEvolutionWhatsAppNumber, sendEvolutionTextMessage } from "@/services/evolution";
+import { checkMetaWhatsAppNumber, isMetaWhatsAppEnabled, markMetaMessageAsRead, sendMetaTextMessage } from "@/services/meta-whatsapp";
 import { ZapiService } from "@/services/zapi/zapi.service";
 import { onlyDigits } from "@/utils/mask";
 
@@ -81,7 +82,7 @@ export class ChatbotEngineService {
     rawPayload?: Prisma.InputJsonValue;
     instanceId?: string;
     extractedData?: ExtractedCustomerData;
-    provider?: "zapi" | "evolution";
+    provider?: "zapi" | "evolution" | "meta";
   }) {
     const phone = normalizeWhatsappPhone(input.phone);
     let alreadyReceived = false;
@@ -132,6 +133,9 @@ export class ChatbotEngineService {
     if (input.providerId && provider === "zapi") {
       await this.zapiService.markAsRead(input.providerId, phone, agentConfig(agent));
     }
+    if (input.providerId && provider === "meta") {
+      await markMetaMessageAsRead(input.providerId);
+    }
     const next = await this.nextResponse({
       phone,
       message: input.message,
@@ -156,7 +160,10 @@ export class ChatbotEngineService {
       memory: next.memory as Prisma.InputJsonValue,
       leadId: next.leadId,
     });
-    if (provider === "evolution") {
+    if (provider === "meta" || (provider === "evolution" && isMetaWhatsAppEnabled())) {
+      const destinationPhone = await this.resolveMetaDestinationPhone(phone);
+      await sendMetaTextMessage({ to: destinationPhone, message: next.reply });
+    } else if (provider === "evolution") {
       const destinationPhone = await this.resolveEvolutionDestinationPhone(phone);
       await sendEvolutionTextMessage({ to: destinationPhone, message: next.reply, delayTypingSeconds: typingEnabled ? delaySeconds : undefined });
     } else {
@@ -208,6 +215,16 @@ export class ChatbotEngineService {
       if (checked.exists && checked.phone) return checked.phone;
     } catch {
       // If validation is unavailable, keep the original webhook phone so the flow is not blocked.
+    }
+    return phone;
+  }
+
+  private async resolveMetaDestinationPhone(phone: string) {
+    try {
+      const checked = await checkMetaWhatsAppNumber(phone);
+      if (checked.exists && checked.phone) return checked.phone;
+    } catch {
+      // Meta Cloud API valida na tentativa de envio; mantenha o telefone original.
     }
     return phone;
   }

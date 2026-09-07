@@ -7,6 +7,7 @@ import { requireCurrentUser } from "@/lib/auth-context";
 import { prisma } from "@/lib/prisma";
 import { assertPermission } from "@/lib/permissions";
 import { resolveEvolutionPhone, sendEvolutionAudioMessage, sendEvolutionMediaMessage, sendEvolutionTextMessage } from "@/services/evolution";
+import { checkMetaWhatsAppNumber, isMetaWhatsAppEnabled, sendMetaMediaMessage, sendMetaTextMessage } from "@/services/meta-whatsapp";
 import { normalizePhone } from "@/services/validators";
 
 type SendBody = {
@@ -30,9 +31,24 @@ export async function POST(request: Request) {
       return NextResponse.json(errorResponse("Destino e mensagem, audio ou anexo sao obrigatorios.", "VALIDATION_ERROR"), { status: 422 });
     }
 
-    const resolvedPhone = await resolveEvolutionPhone(body.to);
+    const usingMeta = isMetaWhatsAppEnabled();
+    if (usingMeta && body.audio) {
+      return NextResponse.json(errorResponse("Envio manual de audio pela Meta ainda nao esta habilitado.", "VALIDATION_ERROR"), { status: 422 });
+    }
+    const resolvedPhone = usingMeta ? await checkMetaWhatsAppNumber(body.to) : await resolveEvolutionPhone(body.to);
     const destinationPhone = resolvedPhone.phone || normalizePhone(body.to);
-    const result = body.audio
+    const result = usingMeta
+      ? body.media && body.kind
+        ? await sendMetaMediaMessage({
+            to: destinationPhone,
+            media: body.media,
+            kind: body.kind,
+            caption: body.message,
+            fileName: body.fileName,
+            mimeType: body.mimeType,
+          })
+        : await sendMetaTextMessage({ to: destinationPhone, message: body.message as string })
+      : body.audio
       ? await sendEvolutionAudioMessage({ to: destinationPhone, audio: body.audio, mimeType: body.mimeType })
       : body.media && body.kind
         ? await sendEvolutionMediaMessage({
@@ -45,7 +61,7 @@ export async function POST(request: Request) {
           })
         : await sendEvolutionTextMessage({ to: destinationPhone, message: body.message as string, delayTypingSeconds: 2 });
 
-    const providerId = resolveEvolutionMessageId(result);
+    const providerId = resolveWhatsAppMessageId(result);
     const conversation = await findOrCreateConversation({
       id: body.conversationId,
       phone: destinationPhone,
@@ -63,7 +79,7 @@ export async function POST(request: Request) {
         providerId,
         sentAt: new Date(),
         rawPayload: {
-          provider: "evolution",
+          provider: usingMeta ? "meta" : "evolution",
           kind: messageKind,
           media: body.media ? { mimeType: body.mimeType, fileName: body.fileName } : undefined,
           result: normalizeJson(result),
@@ -80,7 +96,7 @@ export async function POST(request: Request) {
     const authError = authErrorResponse(error);
     if (authError) return authError;
     return NextResponse.json(
-      errorResponse(error instanceof Error ? error.message : "Falha ao enviar pela Evolution API.", "EVOLUTION_SEND_ERROR"),
+      errorResponse(error instanceof Error ? error.message : "Falha ao enviar pelo WhatsApp.", "WHATSAPP_SEND_ERROR"),
       { status: 502 },
     );
   }
@@ -119,9 +135,10 @@ function defaultMediaLabel(kind?: "imagem" | "video" | "documento") {
   return "Mensagem";
 }
 
-function resolveEvolutionMessageId(result: unknown) {
+function resolveWhatsAppMessageId(result: unknown) {
   if (!result || typeof result !== "object") return undefined;
-  const payload = result as { key?: { id?: unknown }; message?: { key?: { id?: unknown } }; messageId?: unknown; id?: unknown };
+  const payload = result as { key?: { id?: unknown }; message?: { key?: { id?: unknown } }; messages?: Array<{ id?: unknown }>; messageId?: unknown; id?: unknown };
+  if (typeof payload.messages?.[0]?.id === "string" && payload.messages[0].id.trim()) return payload.messages[0].id.trim();
   if (typeof payload.key?.id === "string" && payload.key.id.trim()) return payload.key.id.trim();
   if (typeof payload.message?.key?.id === "string" && payload.message.key.id.trim()) return payload.message.key.id.trim();
   if (typeof payload.messageId === "string" && payload.messageId.trim()) return payload.messageId.trim();

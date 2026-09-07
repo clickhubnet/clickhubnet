@@ -1,9 +1,9 @@
-import { handleEvolutionWebhook, handleEvolutionWebhookHealth } from "@/app/api/whatsapp/webhook/handler";
+import { handleEvolutionWebhook, handleWhatsAppWebhookHealth } from "@/app/api/whatsapp/webhook/handler";
 
 export async function POST(request: Request) {
   return handleEvolutionWebhook(request);
 }
 
-export async function GET() {
-  return handleEvolutionWebhookHealth();
+export async function GET(request: Request) {
+  return handleWhatsAppWebhookHealth(request);
 }

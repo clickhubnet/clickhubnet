@@ -5,6 +5,7 @@ import { errorResponse, successResponse } from "@/lib/api-response";
 import { requireCurrentUser } from "@/lib/auth-context";
 import { assertPermission } from "@/lib/permissions";
 import { checkEvolutionWhatsAppNumber } from "@/services/evolution";
+import { checkMetaWhatsAppNumber, isMetaWhatsAppEnabled } from "@/services/meta-whatsapp";
 import { parsePhoneList } from "@/services/validators";
 
 type VerifyWhatsAppBody = {
@@ -35,7 +36,9 @@ export async function POST(request: Request) {
 
     const checked = await runWithConcurrency(uniquePhones, VERIFY_CONCURRENCY, async (phone) => {
       try {
-        const result = await checkEvolutionWhatsAppNumber(phone);
+        const result = isMetaWhatsAppEnabled()
+          ? await checkMetaWhatsAppNumber(phone)
+          : await checkEvolutionWhatsAppNumber(phone);
         return {
           phone,
           resolvedPhone: result.phone,

@@ -35,6 +35,11 @@ type ChatConversation = {
 type NewConversationState = {
   name: string;
   phone: string;
+  message: string;
+  image: string;
+  imageName: string;
+  imageMimeType: string;
+  tags: string;
   bulkMode: boolean;
   phones: string;
   bulkMessage: string;
@@ -54,6 +59,11 @@ type ScheduleBlock = {
 const emptyNewConversation: NewConversationState = {
   name: "",
   phone: "",
+  message: "",
+  image: "",
+  imageName: "",
+  imageMimeType: "",
+  tags: "",
   bulkMode: false,
   phones: "",
   bulkMessage: "",
@@ -203,12 +213,30 @@ export function ConversationsPanel() {
       return;
     }
 
-    const response = await fetch("/api/conversations", {
+    const unitaryTags = parseTagInput(newConversation.tags);
+    const hasInitialMessage = Boolean(newConversation.message.trim());
+    const hasInitialImage = Boolean(newConversation.image);
+    const response = await fetch(hasInitialMessage || hasInitialImage ? "/api/whatsapp/send" : "/api/conversations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(newConversation),
+      body: JSON.stringify(hasInitialMessage || hasInitialImage
+        ? {
+            to: newConversation.phone,
+            message: newConversation.message,
+            media: newConversation.image,
+            kind: hasInitialImage ? "imagem" : undefined,
+            mimeType: newConversation.imageMimeType,
+            fileName: newConversation.imageName,
+            contactName: newConversation.name,
+            tags: unitaryTags,
+          }
+        : {
+            phone: newConversation.phone,
+            name: newConversation.name,
+            tags: unitaryTags,
+          }),
     });
-    const result = await response.json() as ApiResult<ChatConversation>;
+    const result = await response.json() as ApiResult<ChatConversation | { conversationId: string }>;
     setSubmittingConversation(false);
     if (result.status !== "success") {
       setError(result.message);
@@ -217,7 +245,7 @@ export function ConversationsPanel() {
 
     setNewConversation(emptyNewConversation);
     setCreateModalOpen(false);
-    await refreshConversations(result.data.id);
+    await refreshConversations("conversationId" in result.data ? result.data.conversationId : result.data.id);
   }
 
   async function refreshBroadcastHistory() {
@@ -263,6 +291,21 @@ export function ConversationsPanel() {
       bulkImage: dataUrl,
       bulkImageName: file.name,
       bulkImageMimeType: file.type,
+    }));
+  }
+
+  async function handleUnitaryImageChange(file?: File | null) {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError("Selecione uma imagem valida para iniciar a conversa.");
+      return;
+    }
+    const dataUrl = await readFileAsDataUrl(file);
+    setNewConversation((current) => ({
+      ...current,
+      image: dataUrl,
+      imageName: file.name,
+      imageMimeType: file.type,
     }));
   }
 
@@ -807,6 +850,48 @@ export function ConversationsPanel() {
                   placeholder="+5511999999999"
                   required={!newConversation.bulkMode}
                 />
+                <Textarea
+                  className="min-h-24"
+                  value={newConversation.message}
+                  onChange={(event) => setNewConversation((current) => ({ ...current, message: event.target.value }))}
+                  placeholder="Mensagem ou descrição da imagem"
+                />
+                <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-blue-400/30 bg-blue-500/5 p-4 text-sm font-medium text-blue-100 transition hover:bg-blue-500/10">
+                  <Upload className="h-4 w-4" />
+                  {newConversation.imageName ? `Imagem selecionada: ${newConversation.imageName}` : "Enviar imagem"}
+                  <input
+                    className="hidden"
+                    type="file"
+                    accept="image/*"
+                    onChange={(event) => void handleUnitaryImageChange(event.target.files?.[0])}
+                  />
+                </label>
+                {newConversation.image ? (
+                  <div className="rounded-xl border border-blue-400/15 bg-slate-950/40 p-2">
+                    <img src={newConversation.image} alt="Imagem da conversa" className="max-h-48 w-full rounded-lg object-contain" />
+                    <Button
+                      className="mt-2"
+                      size="sm"
+                      variant="outline"
+                      type="button"
+                      onClick={() => setNewConversation((current) => ({ ...current, image: "", imageName: "", imageMimeType: "" }))}
+                    >
+                      Remover imagem
+                    </Button>
+                  </div>
+                ) : null}
+                <div className="space-y-1">
+                  <div className="relative">
+                    <Tag className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      className="pl-9"
+                      value={newConversation.tags}
+                      onChange={(event) => setNewConversation((current) => ({ ...current, tags: event.target.value }))}
+                      placeholder="Etiquetas: interessado, retorno, vip"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">Separe as etiquetas por vírgula. Elas já entram na conversa criada.</p>
+                </div>
               </>
             )}
             <Button className="w-full" type="submit">
@@ -1094,6 +1179,10 @@ function isConversationHumanTakeover(conversation?: ChatConversation) {
 
 function normalizeTags(tags: string[]) {
   return Array.from(new Set(tags.map((tag) => tag.trim()).filter(Boolean)));
+}
+
+function parseTagInput(value: string) {
+  return normalizeTags(value.split(","));
 }
 
 function sumScheduleQuantity(blocks: ScheduleBlock[]) {

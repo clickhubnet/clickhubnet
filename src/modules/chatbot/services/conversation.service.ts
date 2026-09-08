@@ -11,7 +11,7 @@ export class ConversationService {
     return this.chatbotRepository.findConversationById(id);
   }
 
-  async create(input: { phone: string; name?: string; assignedTo?: string; ownerUserId?: string }) {
+  async create(input: { phone: string; name?: string; assignedTo?: string; tags?: unknown; ownerUserId?: string }) {
     return this.chatbotRepository.createManualConversation(input);
   }
 

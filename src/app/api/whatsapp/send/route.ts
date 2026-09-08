@@ -20,6 +20,7 @@ type SendBody = {
   fileName?: string;
   conversationId?: string;
   contactName?: string;
+  tags?: unknown;
 };
 
 export async function POST(request: Request) {
@@ -67,6 +68,7 @@ export async function POST(request: Request) {
       phone: destinationPhone,
       contactName: body.contactName,
       ownerUserId: user.id,
+      tags: body.tags,
     });
 
     const messageKind = body.audio ? "audio" : body.media ? body.kind : "texto";
@@ -102,17 +104,18 @@ export async function POST(request: Request) {
   }
 }
 
-async function findOrCreateConversation(input: { id?: string; phone: string; contactName?: string; ownerUserId: string }) {
+async function findOrCreateConversation(input: { id?: string; phone: string; contactName?: string; ownerUserId: string; tags?: unknown }) {
+  const tags = normalizeTags(input.tags);
   if (input.id) {
     const existing = await prisma.chatConversation.findFirst({ where: { id: input.id, deletedAt: null } });
-    if (existing) return existing;
+    if (existing) return mergeConversationTags(existing, tags);
   }
 
   const existingByPhone = await prisma.chatConversation.findFirst({
     where: { phone: input.phone, deletedAt: null },
     orderBy: { updatedAt: "desc" },
   });
-  if (existingByPhone) return existingByPhone;
+  if (existingByPhone) return mergeConversationTags(existingByPhone, tags);
 
   return prisma.chatConversation.create({
     data: {
@@ -122,10 +125,38 @@ async function findOrCreateConversation(input: { id?: string; phone: string; con
       memory: {
         contactName: input.contactName?.trim() || input.phone,
         assignedTo: "Equipe",
-        tags: [],
+        tags,
       },
     },
   });
+}
+
+async function mergeConversationTags<T extends { id: string; memory: Prisma.JsonValue }>(conversation: T, tags: string[]) {
+  if (!tags.length) return conversation;
+  const memory = normalizeJsonObject(conversation.memory);
+  const currentTags = Array.isArray(memory.tags) ? memory.tags.map((tag) => String(tag)) : [];
+  const mergedTags = normalizeTags([...currentTags, ...tags]);
+  return prisma.chatConversation.update({
+    where: { id: conversation.id },
+    data: { memory: normalizeJsonValue({ ...memory, tags: mergedTags }) },
+  });
+}
+
+function normalizeTags(value: unknown) {
+  const tags = Array.isArray(value)
+    ? value.map((tag) => String(tag))
+    : typeof value === "string"
+      ? value.split(",")
+      : [];
+  return Array.from(new Set(tags.map((tag) => tag.trim()).filter(Boolean)));
+}
+
+function normalizeJsonObject(value: Prisma.JsonValue | null | undefined): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function normalizeJsonValue(value: unknown) {
+  return JSON.parse(JSON.stringify(value ?? null)) as Prisma.InputJsonValue;
 }
 
 function defaultMediaLabel(kind?: "imagem" | "video" | "documento") {

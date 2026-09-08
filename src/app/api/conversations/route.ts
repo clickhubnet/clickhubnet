@@ -33,7 +33,7 @@ export async function POST(request: Request) {
   try {
     const user = await requireCurrentUser();
     assertPermission(user, permissions.conversationsView);
-    const body = await request.json().catch(() => ({})) as { phone?: string; name?: string; assignedTo?: string };
+    const body = await request.json().catch(() => ({})) as { phone?: string; name?: string; assignedTo?: string; tags?: unknown };
     const phone = normalizePhone(body.phone ?? "");
     if (!phone) {
       return NextResponse.json(errorResponse("Telefone obrigatorio.", "VALIDATION_ERROR"), { status: 422 });
@@ -43,6 +43,7 @@ export async function POST(request: Request) {
       phone,
       name: body.name,
       assignedTo: body.assignedTo,
+      tags: body.tags,
       ownerUserId: user.id,
     });
     return NextResponse.json(successResponse("Conversa criada.", conversation), { status: 201 });

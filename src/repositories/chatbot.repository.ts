@@ -79,8 +79,10 @@ export class ChatbotRepository {
     phone: string;
     name?: string;
     assignedTo?: string;
+    tags?: unknown;
     ownerUserId?: string;
   }) {
+    const tags = normalizeTags(input.tags);
     return prisma.chatConversation.create({
       data: {
         phone: input.phone,
@@ -89,7 +91,7 @@ export class ChatbotRepository {
         memory: {
           contactName: input.name?.trim() || input.phone,
           assignedTo: input.assignedTo?.trim() || "Equipe",
-          tags: [],
+          tags,
         },
       },
       include: { messages: { orderBy: { createdAt: "asc" } } },
@@ -340,6 +342,15 @@ export class ChatbotRepository {
 function normalizeJsonObject(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return value as Record<string, unknown>;
+}
+
+function normalizeTags(value: unknown) {
+  const tags = Array.isArray(value)
+    ? value.map((tag) => String(tag))
+    : typeof value === "string"
+      ? value.split(",")
+      : [];
+  return Array.from(new Set(tags.map((tag) => tag.trim()).filter(Boolean)));
 }
 
 function normalizeJsonValue(value: unknown) {

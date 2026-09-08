@@ -924,6 +924,7 @@ function LeadDetailPanel({
   onSave: (id: string, payload: Partial<LeadListItem>) => Promise<void>;
 }) {
   const [copiedConsultation, setCopiedConsultation] = useState(false);
+  const [copiedAnalysis, setCopiedAnalysis] = useState(false);
 
   if (!lead && !loading) {
     return null;
@@ -936,6 +937,14 @@ function LeadDetailPanel({
     await navigator.clipboard.writeText(value);
     setCopiedConsultation(true);
     window.setTimeout(() => setCopiedConsultation(false), 1800);
+  }
+
+  async function copyAnalysis() {
+    if (!lead) return;
+    const value = buildLeadAnalysisCopy(lead);
+    await navigator.clipboard.writeText(value);
+    setCopiedAnalysis(true);
+    window.setTimeout(() => setCopiedAnalysis(false), 1800);
   }
 
   return (
@@ -972,6 +981,22 @@ function LeadDetailPanel({
                   value={buildConsultationAddress(lead)}
                   readOnly
                   placeholder="Endereço completo com CEP aparecerá aqui quando estiver preenchido."
+                />
+              </section>
+
+              <section className="rounded-md border p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h3 className="text-sm font-semibold uppercase tracking-wide">Copiar para análise</h3>
+                  <Button size="sm" variant="outline" type="button" onClick={() => void copyAnalysis()}>
+                    <Clipboard className="h-4 w-4" aria-hidden="true" />
+                    {copiedAnalysis ? "Copiado" : "Copiar"}
+                  </Button>
+                </div>
+                <Textarea
+                  className="mt-3 min-h-56 resize-none whitespace-pre-wrap font-mono text-sm"
+                  value={buildLeadAnalysisCopy(lead)}
+                  readOnly
+                  placeholder="Resumo formatado do lead aparecerá aqui."
                 />
               </section>
 
@@ -1066,6 +1091,60 @@ function buildConsultationAddress(lead: Partial<LeadListItem>) {
     locationLine,
     cepLine ? `CEP: ${cepLine}` : "",
   ].filter(Boolean).join("\n");
+}
+
+function buildLeadAnalysisCopy(lead: Partial<LeadListItem>) {
+  return [
+    `🛜 PLANO: ${formatPlanForCopy(lead)}`,
+    `👤 Nome: ${normalizeText(lead.name) || "Não informado"}`,
+    `📲 WhatsApp: ${formatPhoneForCopy(lead.phone)}`,
+    `🆔 CPF: ${formatCpfForCopy(lead.cpfCnpj)}`,
+    `🎂 Nascimento: ${formatBirthDateForCopy(lead.birthDate)}`,
+    `📧 E-mail: ${normalizeText(lead.email) || "Não informado"}`,
+    `📍 CEP: ${normalizeCep(lead.cep) || "Não informado"}`,
+    `🏠 Endereço: ${formatAddressForCopy(lead)}`,
+    `📅 Vencimento: ${lead.billingDueDay ? `Dia ${lead.billingDueDay}` : "Não informado"}`,
+  ].join("\n");
+}
+
+function formatPlanForCopy(lead: Partial<LeadListItem>) {
+  return normalizeText(lead.planName) || normalizeText(lead.plan?.name) || "Não informado";
+}
+
+function formatPhoneForCopy(value?: string | null) {
+  const digits = String(value ?? "").replace(/\D/g, "");
+  if (!digits) return "Não informado";
+  if (digits.startsWith("55")) return digits;
+  if (digits.length === 10 || digits.length === 11) return `55${digits}`;
+  return digits;
+}
+
+function formatCpfForCopy(value?: string | null) {
+  const digits = String(value ?? "").replace(/\D/g, "");
+  if (digits.length !== 11) return normalizeText(value) || "Não informado";
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+}
+
+function formatBirthDateForCopy(value?: string | null) {
+  if (!value) return "Não informado";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return normalizeText(value) || "Não informado";
+  return new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC" }).format(date);
+}
+
+function formatAddressForCopy(lead: Partial<LeadListItem>) {
+  const streetLine = [
+    normalizeText(lead.address),
+    lead.streetNumber ? `nº ${normalizeText(lead.streetNumber)}` : "",
+    normalizeText(lead.complement),
+    normalizeText(lead.neighborhood),
+  ].filter(Boolean).join(", ");
+  const cityState = [
+    normalizeText(lead.city).toUpperCase(),
+    normalizeText(lead.state).toUpperCase(),
+  ].filter(Boolean).join("/");
+  if (streetLine && cityState) return `${streetLine} – ${cityState}`;
+  return streetLine || cityState || "Não informado";
 }
 
 function normalizeText(value?: string | null) {

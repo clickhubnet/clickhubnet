@@ -83,7 +83,7 @@ export async function POST(request: Request) {
         rawPayload: {
           provider: usingMeta ? "meta" : "evolution",
           kind: messageKind,
-          media: body.media ? { mimeType: body.mimeType, fileName: body.fileName } : undefined,
+          media: body.media ? { source: body.media, kind: body.kind, mimeType: body.mimeType, fileName: body.fileName } : undefined,
           result: normalizeJson(result),
         } as Prisma.InputJsonValue,
       },

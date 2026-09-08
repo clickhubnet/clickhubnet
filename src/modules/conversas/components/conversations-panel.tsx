@@ -1046,6 +1046,7 @@ function getMessageMedia(message: ChatMessage): MessageMedia | null {
     : {};
   const candidates = [payload, nestedMedia, data, webhookMessage, imageMessage, audioMessage, videoMessage, documentMessage];
   const source = firstPayloadString(candidates.flatMap((item) => [
+    item.source,
     item.mediaUrl,
     item.url,
     item.imageUrl,

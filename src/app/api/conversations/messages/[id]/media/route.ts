@@ -164,6 +164,7 @@ function resolveMedia(value: unknown): { source?: string; mimeType?: string; fil
   const candidates = [payload, media, data, imageMessage, videoMessage, audioMessage, documentMessage];
   return {
     source: firstString(candidates.flatMap((item) => [
+      item.source,
       item.mediaUrl,
       item.url,
       item.imageUrl,

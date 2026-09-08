@@ -261,7 +261,7 @@ export async function processBroadcastMessage(message: BroadcastProcessMessage) 
         rawPayload: normalizeJson({
           provider: usingMeta ? "meta" : "evolution",
           source: "broadcast",
-          media: message.media ? { kind: message.mediaKind, mimeType: message.mimeType, fileName: message.fileName } : undefined,
+          media: message.media ? { source: message.media, kind: message.mediaKind, mimeType: message.mimeType, fileName: message.fileName } : undefined,
           result,
         }),
       },

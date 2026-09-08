@@ -125,6 +125,18 @@ export class CepRepository {
       orderBy: [{ importedAt: "desc" }, { createdAt: "desc" }],
     });
   }
+
+  async findManyByCeps(ceps: string[]) {
+    if (!ceps.length) return [];
+    return prisma.coverageCep.findMany({
+      where: {
+        cep: { in: ceps },
+        available: true,
+        deletedAt: null,
+      },
+      orderBy: [{ importedAt: "desc" }, { createdAt: "desc" }],
+    });
+  }
 }
 
 function chunk<T>(items: T[], size: number) {
